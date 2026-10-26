@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="penki_primary">#1B5E4B</color>
+    <color name="penki_primary_dark">#0F3D30</color>
+    <color name="penki_background">#F6F8F5</color>
+    <color name="white">#FFFFFF</color>
+</resources>

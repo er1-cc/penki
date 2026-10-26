@@ -1,0 +1,1 @@
+# Nenaudojama – programa nenaudoja minifikavimo

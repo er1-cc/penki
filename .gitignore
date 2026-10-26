@@ -1,0 +1,12 @@
+.dev/
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+node_modules/
+
+# Nekelti sugeneruotų APK į repozitoriją
+android/app/build/
+dist/

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Penki" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/penki_primary_dark</item>
+        <item name="android:navigationBarColor">@color/penki_background</item>
+        <item name="android:windowBackground">@color/penki_background</item>
+    </style>
+</resources>
