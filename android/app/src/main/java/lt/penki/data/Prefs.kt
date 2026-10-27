@@ -51,6 +51,11 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_CLASS, "") ?: ""
         set(value) = sp.edit().putString(KEY_CLASS, value).apply()
 
+    /** Pamokų pabaigos laikai, pvz. "08:45,09:40,10:35". Naudojami priminimams be interneto. */
+    var lessonEnds: String
+        get() = sp.getString(KEY_LESSON_ENDS, "") ?: ""
+        set(value) = sp.edit().putString(KEY_LESSON_ENDS, value.trim()).apply()
+
     val loggedIn: Boolean get() = accessToken.isNotBlank()
 
     fun clearSession() {
@@ -73,5 +78,6 @@ class Prefs(context: Context) {
         const val KEY_EMAIL = "email"
         const val KEY_NOTIF = "notifications_enabled"
         const val KEY_CLASS = "preferred_class_id"
+        const val KEY_LESSON_ENDS = "lesson_ends"
     }
 }

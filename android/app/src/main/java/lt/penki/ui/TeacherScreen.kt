@@ -136,7 +136,7 @@ fun TeacherScreen(
 
             item { SectionTitle("Šiandienos pamokos") }
 
-            items((1..7).toList()) { lessonNo ->
+            items(Lessons.numbers.toList()) { lessonNo ->
                 val rated = todaysRatings.filter { it.lesson_no == lessonNo }
                 LessonRow(
                     lessonNo = lessonNo,
@@ -296,7 +296,7 @@ fun RatingDialog(
                 Text("Pamoka", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    (1..7).forEach { number ->
+                    Lessons.numbers.forEach { number ->
                         val selected = number == lessonNo
                         if (selected) {
                             Button(

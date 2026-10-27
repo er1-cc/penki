@@ -85,6 +85,8 @@ object Notifications {
     /** Suplanuoja artimiausių 7 dienų priminimus (praleidžia savaitgalį). */
     fun scheduleUpcoming(context: Context) {
         val prefs = Prefs(context)
+        // Laikai saugomi telefone, kad priminimai veiktų ir po perkrovimo be interneto.
+        Lessons.applySaved(prefs)
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
 
         if (!prefs.notificationsEnabled) {

@@ -100,6 +100,7 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
 
             Screen.Admin -> AdminScreen(
                 state = state,
+                diagnostics = viewModel.diagnostics(),
                 onBack = viewModel::goHome,
                 onRefresh = viewModel::refreshAdmin,
                 onDismissNotice = viewModel::dismissNotice,
@@ -109,7 +110,20 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                 onDeleteInvite = viewModel::deleteInvite,
                 onApprove = viewModel::approveTeacher,
                 onAddClass = viewModel::addClass,
-                onDeleteClass = viewModel::deleteClass
+                onDeleteClass = viewModel::deleteClass,
+                onToggleTeacherClass = viewModel::toggleTeacherClass,
+                onSaveLessonTime = viewModel::saveLessonTime,
+                onAddLesson = viewModel::addLesson,
+                onRemoveLesson = viewModel::removeLesson,
+                onResetLessonTimes = viewModel::resetLessonTimes,
+                onDebugCreateAccount = viewModel::debugCreateAccount,
+                onDebugSeedRatings = viewModel::debugSeedRatings,
+                onDebugDeleteAllRatings = viewModel::debugDeleteAllRatings,
+                onDebugDeleteTeacherRatings = viewModel::debugDeleteTeacherRatings,
+                onDebugDeleteInvites = viewModel::debugDeleteInvites,
+                onDebugTestNotification = viewModel::debugTestNotification,
+                onDebugRescheduleNotifications = viewModel::debugRescheduleNotifications,
+                onDebugCancelNotifications = viewModel::debugCancelNotifications
             )
 
             Screen.Settings -> SettingsScreen(

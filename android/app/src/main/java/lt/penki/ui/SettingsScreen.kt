@@ -142,6 +142,12 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
                     Text("Pamokų pabaigos laikai", fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Laikus nustato administratorius (Admin → Laikai).",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
                     Lessons.ends.forEachIndexed { index, time ->
                         Text(
                             "${index + 1}-a pamoka – ${time.format(Lessons.timeFormatter)}",

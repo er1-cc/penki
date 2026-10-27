@@ -250,6 +250,74 @@ class Supabase(val prefs: Prefs) {
         execute("DELETE", "/rest/v1/classes?id=eq.$id", token = token)
     }
 
+    // ------------------------------------------------- Mokytojo klasių priskyrimas
+
+    /** Visi priskyrimai (matoma tik adminui). */
+    suspend fun allTeacherClasses(): List<TeacherClass> {
+        val token = freshToken()
+        val raw = execute("GET", "/rest/v1/teacher_classes?select=teacher_id,class_id", token = token)
+        return json.decodeFromString(raw)
+    }
+
+    /** Savo priskyrimai (mokytojo ekranui). */
+    suspend fun myTeacherClasses(): List<TeacherClass> {
+        val token = freshToken()
+        val raw = execute(
+            "GET",
+            "/rest/v1/teacher_classes?select=teacher_id,class_id&teacher_id=eq.${prefs.userId}",
+            token = token
+        )
+        return json.decodeFromString(raw)
+    }
+
+    suspend fun assignClass(teacherId: String, classId: String) {
+        val token = freshToken()
+        execute(
+            "POST",
+            "/rest/v1/teacher_classes",
+            json.encodeToString(NewTeacherClass(teacherId, classId)),
+            token,
+            prefer = "resolution=ignore-duplicates"
+        )
+    }
+
+    suspend fun unassignClass(teacherId: String, classId: String) {
+        val token = freshToken()
+        execute(
+            "DELETE",
+            "/rest/v1/teacher_classes?teacher_id=eq.$teacherId&class_id=eq.$classId",
+            token = token
+        )
+    }
+
+    // ---------------------------------------------------------------- Pamokų laikai
+
+    suspend fun lessonTimes(): List<LessonTime> {
+        val token = freshToken()
+        val raw = execute(
+            "GET",
+            "/rest/v1/lesson_times?select=lesson_no,ends_at&order=lesson_no.asc",
+            token = token
+        )
+        return json.decodeFromString(raw)
+    }
+
+    suspend fun saveLessonTime(lessonNo: Int, endsAt: String) {
+        val token = freshToken()
+        execute(
+            "POST",
+            "/rest/v1/lesson_times?on_conflict=lesson_no",
+            json.encodeToString(NewLessonTime(lessonNo, endsAt)),
+            token,
+            prefer = "resolution=merge-duplicates"
+        )
+    }
+
+    suspend fun deleteLessonTime(lessonNo: Int) {
+        val token = freshToken()
+        execute("DELETE", "/rest/v1/lesson_times?lesson_no=eq.$lessonNo", token = token)
+    }
+
     // ---------------------------------------------------------------- Vertinimai
 
     suspend fun myRatings(): List<Rating> {
@@ -278,11 +346,24 @@ class Supabase(val prefs: Prefs) {
         score: Int,
         comment: String,
         date: String
+    ): Rating = insertRating(prefs.userId, classId, lessonNo, score, comment, date)
+
+    /**
+     * Įrašo vertinimą nurodytam mokytojui. Paprastai teacherId = savininko ID,
+     * bet adminas (debug režime) gali generuoti vertinimus ir kitiems mokytojams.
+     */
+    suspend fun insertRating(
+        teacherId: String,
+        classId: String,
+        lessonNo: Int,
+        score: Int,
+        comment: String,
+        date: String
     ): Rating {
         val token = freshToken()
         val body = json.encodeToString(
             NewRating(
-                teacher_id = prefs.userId,
+                teacher_id = teacherId,
                 class_id = classId,
                 lesson_no = lessonNo,
                 score = score,
@@ -337,5 +418,58 @@ class Supabase(val prefs: Prefs) {
             token
         )
         return json.decodeFromString(raw)
+    }
+
+    // ---------------------------------------------------------------- Debug (adminas)
+
+    /**
+     * Sukuria eksperimentinę paskyrą per viešą registracijos API ir grąžina jos ID.
+     * Registracija laikinai pakeičia sesiją, todėl admino sesija atstatoma iškart.
+     */
+    suspend fun createTestAccount(fullName: String, email: String, password: String): String {
+        val savedToken = prefs.accessToken
+        val savedRefresh = prefs.refreshToken
+        val savedExpires = prefs.expiresAt
+        val savedUser = prefs.userId
+        val savedEmail = prefs.email
+        try {
+            val payload = buildJsonObject {
+                put("email", email.trim())
+                put("password", password)
+                put("data", buildJsonObject { put("full_name", fullName.trim()) })
+            }.toString()
+            val raw = execute("POST", "/auth/v1/signup", payload)
+            val auth = json.decodeFromString<AuthResponse>(raw)
+            // Be sesijos reiškia, kad paskyra nebuvo sukurta (toks el. paštas jau yra)
+            // arba įjungtas el. pašto patvirtinimas – tokiu atveju rolės nekeičiame.
+            val newId = auth.user?.id ?: auth.id
+            if (auth.access_token.isNullOrBlank() || newId.isNullOrBlank()) {
+                throw ApiException(
+                    "Paskyra nesukurta: toks el. paštas jau užregistruotas arba Supabase reikalauja patvirtinti el. paštą."
+                )
+            }
+            return newId
+        } finally {
+            prefs.accessToken = savedToken
+            prefs.refreshToken = savedRefresh
+            prefs.expiresAt = savedExpires
+            prefs.userId = savedUser
+            prefs.email = savedEmail
+        }
+    }
+
+    suspend fun deleteAllRatings() {
+        val token = freshToken()
+        execute("DELETE", "/rest/v1/ratings?id=not.is.null", token = token)
+    }
+
+    suspend fun deleteRatingsOf(teacherId: String) {
+        val token = freshToken()
+        execute("DELETE", "/rest/v1/ratings?teacher_id=eq.$teacherId", token = token)
+    }
+
+    suspend fun deleteAllInvites() {
+        val token = freshToken()
+        execute("DELETE", "/rest/v1/invites?id=not.is.null", token = token)
     }
 }

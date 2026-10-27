@@ -96,6 +96,34 @@ data class NewRating(
     val rated_on: String
 )
 
+/** Mokytojo ir klasės priskyrimas (adminas nurodo, kurias klases mokytojas vertina). */
+@Serializable
+data class TeacherClass(
+    val teacher_id: String = "",
+    val class_id: String = ""
+)
+
+@Serializable
+data class NewTeacherClass(
+    val teacher_id: String,
+    val class_id: String
+)
+
+/** Pamokos pabaigos laikas, saugomas serveryje (HH:mm). */
+@Serializable
+data class LessonTime(
+    val lesson_no: Int = 1,
+    val ends_at: String = ""
+) {
+    val hhmm: String get() = ends_at.take(5)
+}
+
+@Serializable
+data class NewLessonTime(
+    val lesson_no: Int,
+    val ends_at: String
+)
+
 @Serializable
 data class RedeemResult(val ok: Boolean = false, val error: String? = null)
 
