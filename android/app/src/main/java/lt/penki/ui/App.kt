@@ -5,19 +5,29 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,8 +44,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import lt.penki.data.Lessons
 
 @Composable
@@ -116,6 +128,8 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                 onAddLesson = viewModel::addLesson,
                 onRemoveLesson = viewModel::removeLesson,
                 onResetLessonTimes = viewModel::resetLessonTimes,
+                onSaveSheetsConfig = viewModel::saveSheetsConfig,
+                onLoadTeacherLessonTimes = viewModel::loadTeacherLessonTimes,
                 onDebugCreateAccount = viewModel::debugCreateAccount,
                 onDebugSeedRatings = viewModel::debugSeedRatings,
                 onDebugDeleteAllRatings = viewModel::debugDeleteAllRatings,
@@ -123,7 +137,9 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                 onDebugDeleteInvites = viewModel::debugDeleteInvites,
                 onDebugTestNotification = viewModel::debugTestNotification,
                 onDebugRescheduleNotifications = viewModel::debugRescheduleNotifications,
-                onDebugCancelNotifications = viewModel::debugCancelNotifications
+                onDebugCancelNotifications = viewModel::debugCancelNotifications,
+                onMarkFeedbackRead = viewModel::markFeedbackRead,
+                onDeleteFeedback = viewModel::deleteFeedback
             )
 
             Screen.Settings -> SettingsScreen(
@@ -133,7 +149,8 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                 onUpdateName = viewModel::updateName,
                 onNotifications = viewModel::setNotifications,
                 onLogout = viewModel::logout,
-                onDismissNotice = viewModel::dismissNotice
+                onDismissNotice = viewModel::dismissNotice,
+                onSendFeedback = viewModel::sendFeedback
             )
         }
 
@@ -148,6 +165,18 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                 CircularProgressIndicator(color = Color.White)
             }
         }
+
+        state.update?.let { info ->
+            UpdateBanner(
+                info = info,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                onAction = viewModel::downloadUpdate,
+                onDismiss = viewModel::dismissUpdate
+            )
+        }
     }
 
     val lesson = ratingLesson
@@ -161,6 +190,82 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                 viewModel.saveRating(classId, lessonNo, score, comment) { ratingLesson = null }
             }
         )
+    }
+}
+
+// ------------------------------------------------------------ NAUJINIMAS
+
+/**
+ * Neintrusyvus naujinio pranešimas viršuje. Nieko neužblokuoja ir
+ * savaime išnyksta po 10 sekundžių, jei vartotojas nieko nepasirenka.
+ */
+@Composable
+private fun UpdateBanner(
+    info: UpdateInfo,
+    onAction: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Tik tuščią (nieko nevykstančią) būseną automatiškai uždarome.
+    // Kol atsisiunčiama arba failas paruoštas – pranešimas lieka.
+    val idle = !info.downloading && info.file == null
+    LaunchedEffect(info.version, idle) {
+        if (idle) {
+            delay(10_000)
+            onDismiss()
+        }
+    }
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        shadowElevation = 6.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, top = 10.dp, end = 4.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (info.file != null) "Naujinys paruoštas" else "Yra nauja versija ${info.version}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (info.notes.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = info.notes,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (info.downloading) {
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { info.progress / 100f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Atsisiunčiama… ${info.progress}%",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = onAction, enabled = !info.downloading) {
+                Text(if (info.file != null) "Įdiegti" else "Atnaujinti")
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Slėpti naujinio pranešimą"
+                )
+            }
+        }
     }
 }
 

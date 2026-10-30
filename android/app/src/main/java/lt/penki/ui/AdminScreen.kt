@@ -1,6 +1,7 @@
 package lt.penki.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -50,7 +51,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import lt.penki.data.Feedback
 import lt.penki.data.Invite
+import lt.penki.data.Klass
 import lt.penki.data.LessonTime
 import lt.penki.data.Lessons
 import lt.penki.data.Profile
@@ -70,13 +76,15 @@ fun AdminScreen(
     onApprove: (String) -> Unit,
     onCreateInvite: (String, (String) -> Unit) -> Unit,
     onDeleteInvite: (String) -> Unit,
-    onAddClass: (String) -> Unit,
+    onAddClass: (String, () -> Unit) -> Unit,
     onDeleteClass: (String) -> Unit,
     onToggleTeacherClass: (String, String, Boolean) -> Unit,
-    onSaveLessonTime: (Int, String) -> Unit,
-    onAddLesson: () -> Unit,
-    onRemoveLesson: (Int) -> Unit,
-    onResetLessonTimes: () -> Unit,
+    onSaveLessonTime: (String, Int, String) -> Unit,
+    onAddLesson: (String) -> Unit,
+    onRemoveLesson: (String, Int) -> Unit,
+    onResetLessonTimes: (String) -> Unit,
+    onLoadTeacherLessonTimes: (String) -> Unit,
+    onSaveSheetsConfig: (Boolean, String, String, Boolean) -> Unit,
     onDebugCreateAccount: (String, String, String, Boolean, Int) -> Unit,
     onDebugSeedRatings: (String, Int) -> Unit,
     onDebugDeleteAllRatings: () -> Unit,
@@ -84,10 +92,12 @@ fun AdminScreen(
     onDebugDeleteInvites: () -> Unit,
     onDebugTestNotification: (Int) -> Unit,
     onDebugRescheduleNotifications: () -> Unit,
-    onDebugCancelNotifications: () -> Unit
+    onDebugCancelNotifications: () -> Unit,
+    onMarkFeedbackRead: (String) -> Unit = {},
+    onDeleteFeedback: (String) -> Unit = {}
 ) {
     var tab by remember { mutableIntStateOf(0) }
-    val titles = listOf("Mokytojai", "Kvietimai", "Klasės", "Laikai", "Statistika", "Debug")
+    val titles = listOf("Mokytojai", "Kvietimai", "Klasės", "Laikai", "Sheets", "Statistika", "Atsiliepimai", "Debug")
 
     Scaffold(
         topBar = {
@@ -157,10 +167,22 @@ fun AdminScreen(
                     onSave = onSaveLessonTime,
                     onAdd = onAddLesson,
                     onRemove = onRemoveLesson,
-                    onReset = onResetLessonTimes
+                    onReset = onResetLessonTimes,
+                    onLoadTeacherLessonTimes = onLoadTeacherLessonTimes
                 )
 
-                4 -> StatsTab(state.allRatings)
+                4 -> GoogleSheetsTab(
+                    state = state,
+                    onSave = onSaveSheetsConfig
+                )
+
+                5 -> StatsTab(state.allRatings)
+
+                6 -> FeedbackTab(
+                    feedback = state.feedback,
+                    onMarkRead = onMarkFeedbackRead,
+                    onDelete = onDeleteFeedback
+                )
 
                 else -> DebugTab(
                     state = state,
@@ -463,10 +485,11 @@ private fun InviteRow(invite: Invite, onDelete: (String) -> Unit) {
 @Composable
 private fun ClassesTab(
     state: UiState,
-    onAddClass: (String) -> Unit,
+    onAddClass: (String, () -> Unit) -> Unit,
     onDeleteClass: (String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
+    var pendingDelete by remember { mutableStateOf<Klass?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.padding(16.dp)) {
@@ -479,10 +502,7 @@ private fun ClassesTab(
             PenkiTextField(name, { name = it }, "Klasės pavadinimas (pvz. 7b)")
             Spacer(Modifier.height(8.dp))
             Button(
-                onClick = {
-                    onAddClass(name)
-                    name = ""
-                },
+                onClick = { onAddClass(name) { name = "" } },
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Pridėti klasę") }
@@ -500,12 +520,37 @@ private fun ClassesTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(klass.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
-                        TextButton(onClick = { onDeleteClass(klass.id) }) { Text("Šalinti") }
+                        TextButton(onClick = { pendingDelete = klass }) { Text("Šalinti") }
                     }
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
+    }
+
+    // Klasės šalinimas sunaikina ir visus jos vertinimus (ON DELETE CASCADE),
+    // todėl reikalingas patvirtinimas – kaip ir kitoms negrįžtamoms operacijoms.
+    val toDelete = pendingDelete
+    if (toDelete != null) {
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Šalinti klasę?") },
+            text = {
+                Text(
+                    "Ištrinant klasę „${toDelete.name}“ kartu su ja bus ištrinti visi jai priklausantys " +
+                        "vertinimai ir mokytojų priskyrimai. Šio veiksmo atšaukti negalima."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDelete = null
+                    onDeleteClass(toDelete.id)
+                }) { Text("Taip, šalinti") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Atšaukti") }
+            }
+        )
     }
 }
 
@@ -514,19 +559,29 @@ private fun ClassesTab(
 @Composable
 private fun LessonTimesTab(
     state: UiState,
-    onSave: (Int, String) -> Unit,
-    onAdd: () -> Unit,
-    onRemove: (Int) -> Unit,
-    onReset: () -> Unit
+    onSave: (String, Int, String) -> Unit,
+    onAdd: (String) -> Unit,
+    onRemove: (String, Int) -> Unit,
+    onReset: (String) -> Unit,
+    onLoadTeacherLessonTimes: (String) -> Unit
 ) {
-    val rows = if (state.lessonTimes.isEmpty()) {
-        Lessons.ends.mapIndexed { index, time ->
-            LessonTime(index + 1, time.format(Lessons.timeFormatter))
-        }
-    } else {
-        state.lessonTimes.sortedBy { it.lesson_no }
-    }
+    var selectedTeacherId by remember { mutableStateOf("") }
+    var teacherMenu by remember { mutableStateOf(false) }
+    val teachers = state.teachers.filter { it.isTeacher }
+    val selectedTeacher = teachers.firstOrNull { it.id == selectedTeacherId }
+    val teacherId = selectedTeacher?.id.orEmpty()
+    val rows = if (teacherId.isNotBlank()) state.lessonTimes.filter { it.teacher_id == teacherId }
+    else emptyList()
     val lastLesson = rows.maxOfOrNull { it.lesson_no } ?: 0
+
+    androidx.compose.runtime.LaunchedEffect(teachers, selectedTeacherId) {
+        if (selectedTeacherId.isBlank() && teachers.isNotEmpty()) {
+            selectedTeacherId = state.lessonTimes.firstOrNull()?.teacher_id
+                ?.takeIf { id -> teachers.any { it.id == id } }
+                ?: teachers.first().id
+        }
+        if (selectedTeacherId.isNotBlank()) onLoadTeacherLessonTimes(selectedTeacherId)
+    }
 
     Column(
         modifier = Modifier
@@ -535,19 +590,35 @@ private fun LessonTimesTab(
     ) {
         Column(Modifier.padding(16.dp)) {
             Text(
-                "Pamokų pabaigos laikai. Nuo jų priklauso, kada mokytojams ateina priminimai. " +
-                    "Pakeitimai iškart perplanuoja pranešimus šiame telefone.",
+                "Pamokų pabaigos laikai nustatomi kiekvienam mokytojui atskirai. Pasirinkto mokytojo pakeitimai keičia tik jo priminimų tvarkaraštį.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(10.dp))
+            Box {
+                OutlinedButton(onClick = { teacherMenu = true }, enabled = teachers.isNotEmpty()) {
+                    Text(selectedTeacher?.let { "Mokytojas: ${it.full_name.ifBlank { it.email }}" } ?: "Pasirinkite mokytoją")
+                }
+                DropdownMenu(expanded = teacherMenu, onDismissRequest = { teacherMenu = false }) {
+                    teachers.forEach { teacher ->
+                        DropdownMenuItem(
+                            text = { Text(teacher.full_name.ifBlank { teacher.email }) },
+                            onClick = {
+                                selectedTeacherId = teacher.id
+                                teacherMenu = false
+                            }
+                        )
+                    }
+                }
+            }
         }
 
-        rows.forEach { row ->
+        if (teacherId.isNotBlank()) rows.forEach { row ->
             LessonTimeRow(
                 row = row,
                 canRemove = rows.size > 1 && row.lesson_no == lastLesson,
-                onSave = onSave,
-                onRemove = onRemove
+                onSave = { no, time -> onSave(teacherId, no, time) },
+                onRemove = { no -> onRemove(teacherId, no) }
             )
         }
 
@@ -558,18 +629,17 @@ private fun LessonTimesTab(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedButton(
-                onClick = onAdd,
-                enabled = rows.size < Lessons.MAX_LESSONS && !state.busy,
+                onClick = { if (teacherId.isNotBlank()) onAdd(teacherId) },
+                enabled = teacherId.isNotBlank() && rows.size < Lessons.MAX_LESSONS && !state.busy,
                 modifier = Modifier.weight(1f)
             ) { Text("Pridėti pamoką") }
 
             OutlinedButton(
-                onClick = onReset,
-                enabled = !state.busy,
+                onClick = { if (teacherId.isNotBlank()) onReset(teacherId) },
+                enabled = teacherId.isNotBlank() && !state.busy,
                 modifier = Modifier.weight(1f)
             ) { Text("Atstatyti") }
         }
-
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -623,7 +693,8 @@ private fun LessonTimeRow(
 @Composable
 private fun StatsTab(ratings: List<Rating>) {
     val today = LocalDate.now()
-    val weekAgo = today.minusDays(7)
+    // 7 dienos, įskaitant šiandieną (>= today-6), o ne 8 dienos.
+    val weekAgo = today.minusDays(6)
 
     val lastWeek = ratings.filter { rating ->
         rating.rated_on?.let {
@@ -784,6 +855,7 @@ private fun DebugTab(
     var teacherMenuOpen by remember { mutableStateOf(false) }
 
     var confirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    var showBrowser by remember { mutableStateOf(false) }
 
     val teachers = state.teachers.filter { it.role != "pending" }
     val selectedTeacher = teachers.firstOrNull { it.id == teacherId }
@@ -1021,6 +1093,53 @@ private fun DebugTab(
                 }
             }
         }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Slapti irankiai", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Tik administratoriui.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                var showSecretBrowser by remember { mutableStateOf(false) }
+                Button(
+                    onClick = { showSecretBrowser = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Slapta Google naršyklė") }
+                if (showSecretBrowser) {
+                    AlertDialog(
+                        onDismissRequest = { showSecretBrowser = false },
+                        modifier = Modifier.fillMaxSize(),
+                        title = { Text("Google") },
+                        text = {
+                            AndroidView(
+                                factory = { context ->
+                                    WebView(context).apply {
+                                        webViewClient = WebViewClient()
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        loadUrl("https://www.google.com")
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(400.dp)
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showSecretBrowser = false }) { Text("Uždaryti") }
+                        }
+                    )
+                }
+            }
+        }
     }
 
     val pending = confirm
@@ -1039,5 +1158,91 @@ private fun DebugTab(
                 TextButton(onClick = { confirm = null }) { Text("Atšaukti") }
             }
         )
+    }
+}
+
+
+// ------------------------------------------------------------------ ATSILIEPIMAI
+
+@Composable
+private fun FeedbackTab(
+    feedback: List<Feedback>,
+    onMarkRead: (String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    if (feedback.isEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                "Atsiliepimų kol kas nėra.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item {
+            Text(
+                "Mokytojų atsiliepimai ir pasiūlymai.",
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        items(feedback) { item ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                item.teacherName,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                formatDate(item.created_at),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (!item.read) {
+                            Text(
+                                "Naujas",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        item.message,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!item.read) {
+                            OutlinedButton(onClick = { onMarkRead(item.id) }) {
+                                Text("Žymėti kaip skaitytą")
+                            }
+                        }
+                        TextButton(onClick = { onDelete(item.id) }) {
+                            Text("Šalinti")
+                        }
+                    }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }

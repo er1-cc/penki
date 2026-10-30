@@ -56,6 +56,15 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_LESSON_ENDS, "") ?: ""
         set(value) = sp.edit().putString(KEY_LESSON_ENDS, value.trim()).apply()
 
+    /** Vietinė mokytojo pamokų tvarkaraščio kopija, kad priminimai veiktų be ryšio. */
+    var lessonEndsByTeacher: String
+        get() = sp.getString(KEY_LESSON_ENDS_BY_TEACHER, "") ?: ""
+        set(value) = sp.edit().putString(KEY_LESSON_ENDS_BY_TEACHER, value.trim()).apply()
+
+    var scheduleTeacherId: String
+        get() = sp.getString(KEY_SCHEDULE_TEACHER_ID, "") ?: ""
+        set(value) = sp.edit().putString(KEY_SCHEDULE_TEACHER_ID, value).apply()
+
     val loggedIn: Boolean get() = accessToken.isNotBlank()
 
     fun clearSession() {
@@ -79,5 +88,7 @@ class Prefs(context: Context) {
         const val KEY_NOTIF = "notifications_enabled"
         const val KEY_CLASS = "preferred_class_id"
         const val KEY_LESSON_ENDS = "lesson_ends"
+        const val KEY_LESSON_ENDS_BY_TEACHER = "lesson_ends_by_teacher"
+        const val KEY_SCHEDULE_TEACHER_ID = "schedule_teacher_id"
     }
 }

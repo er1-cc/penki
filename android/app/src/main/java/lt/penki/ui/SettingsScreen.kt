@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,6 +26,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import lt.penki.BuildConfig
 import lt.penki.data.Lessons
 import lt.penki.notify.Notifications
 
@@ -50,11 +53,14 @@ fun SettingsScreen(
     onUpdateName: (String) -> Unit,
     onNotifications: (Boolean) -> Unit,
     onLogout: () -> Unit,
-    onDismissNotice: () -> Unit
+    onDismissNotice: () -> Unit,
+    onSendFeedback: (String) -> Unit = {}
 ) {
     var name by remember(state.profile?.full_name) {
         mutableStateOf(state.profile?.full_name.orEmpty())
     }
+    var feedbackOpen by remember { mutableStateOf(false) }
+    var feedbackText by remember { mutableStateOf("") }
 
     val context = LocalContext.current
 
@@ -166,6 +172,30 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(12.dp))
 
+            if (!state.isAdmin) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Atsiliepimai", fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Siųskite pastabas, pasiūlymus ar pastebėtas klaidas.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                feedbackText = ""
+                                feedbackOpen = true
+                            },
+                            enabled = !state.busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Rašyti atsiliepimą") }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Paskyra", fontWeight = FontWeight.SemiBold)
@@ -184,10 +214,56 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(16.dp))
             Text(
-                "penki · 1.0",
+                "penki · ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+
+    if (feedbackOpen && !state.isAdmin) {
+        AlertDialog(
+            onDismissRequest = { if (!state.busy) feedbackOpen = false },
+            title = { Text("Atsiliepimas") },
+            text = {
+                Column {
+                    Text(
+                        "Parašykite savo atsiliepimą ar pasiūlymą.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    PenkiTextField(
+                        value = feedbackText,
+                        onValueChange = { if (it.length <= 1000) feedbackText = it },
+                        label = "Žinutė",
+                        singleLine = false,
+                        minLines = 4
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${feedbackText.length}/1000",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !state.busy && feedbackText.isNotBlank(),
+                    onClick = {
+                        onSendFeedback(feedbackText)
+                        feedbackOpen = false
+                        feedbackText = ""
+                    }
+                ) { Text("Siųsti") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !state.busy,
+                    onClick = { feedbackOpen = false }
+                ) { Text("Atšaukti") }
+            }
+        )
     }
 }

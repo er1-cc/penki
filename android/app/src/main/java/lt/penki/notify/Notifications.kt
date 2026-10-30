@@ -28,6 +28,7 @@ object Notifications {
 
     const val CHANNEL_ID = "pamokos"
     const val EXTRA_LESSON = "lesson_no"
+    const val EXTRA_TEACHER = "teacher_id"
 
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
@@ -50,11 +51,14 @@ object Notifications {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    fun show(context: Context, lessonNo: Int) {
+    fun show(context: Context, lessonNo: Int, teacherId: String = Prefs(context).scheduleTeacherId) {
         if (!canPost(context)) return
+        val prefs = Prefs(context)
+        if (teacherId.isBlank() || teacherId != prefs.scheduleTeacherId || !prefs.loggedIn) return
 
         val intent = Intent(context, MainActivity::class.java).apply {
             putExtra(EXTRA_LESSON, lessonNo)
+            putExtra(EXTRA_TEACHER, teacherId)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val contentIntent = PendingIntent.getActivity(
@@ -85,21 +89,25 @@ object Notifications {
     /** Suplanuoja artimiausių 7 dienų priminimus (praleidžia savaitgalį). */
     fun scheduleUpcoming(context: Context) {
         val prefs = Prefs(context)
-        // Laikai saugomi telefone, kad priminimai veiktų ir po perkrovimo be interneto.
+        // Grafikas priklauso nuo prisijungusio mokytojo ir saugomas lokaliai po serverio sinchronizavimo.
         Lessons.applySaved(prefs)
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
 
-        if (!prefs.notificationsEnabled) {
+        if (!prefs.notificationsEnabled || !prefs.loggedIn || prefs.scheduleTeacherId.isBlank()) {
             cancelAll(context)
             return
         }
 
+        // Pašaliname ankstesnio grafiko aliarmus (pvz., jei pamokų sumažėjo),
+        // tada suplanuojame visą dabartinį langą nuo nulio.
+        cancelScheduledAlarms(context, alarmManager)
+        val currentTeacher = prefs.scheduleTeacherId
         val now = LocalDateTime.now()
         for (offset in 0..6) {
             val day = now.toLocalDate().plusDays(offset.toLong())
             if (day.dayOfWeek == DayOfWeek.SATURDAY || day.dayOfWeek == DayOfWeek.SUNDAY) continue
 
-            Lessons.ends.forEachIndexed { index, end ->
+            Lessons.scheduleFor(currentTeacher).forEachIndexed { index, end ->
                 val at = LocalDateTime.of(day, end)
                 if (at.isBefore(now.plusMinutes(1))) return@forEachIndexed
 
@@ -116,8 +124,10 @@ object Notifications {
         triggerAt: Long,
         lessonNo: Int
     ) {
+        val prefs = Prefs(context)
         val intent = Intent(context, LessonAlarmReceiver::class.java)
             .putExtra(EXTRA_LESSON, lessonNo)
+            .putExtra(EXTRA_TEACHER, prefs.scheduleTeacherId)
 
         val pending = PendingIntent.getBroadcast(
             context,
@@ -141,16 +151,23 @@ object Notifications {
 
     fun cancelAll(context: Context) {
         val alarmManager = context.getSystemService(AlarmManager::class.java)
-        for (requestCode in 0..800) {
-            val intent = Intent(context, LessonAlarmReceiver::class.java)
-            val pending = PendingIntent.getBroadcast(
-                context,
-                requestCode,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            alarmManager?.cancel(pending)
-        }
+        if (alarmManager != null) cancelScheduledAlarms(context, alarmManager)
         context.getSystemService(NotificationManager::class.java)?.cancelAll()
+    }
+
+    private fun cancelScheduledAlarms(context: Context, alarmManager: AlarmManager) {
+        for (offset in 0..6) {
+            for (lesson in 1..Lessons.MAX_LESSONS) {
+                val requestCode = offset * 100 + lesson
+                val intent = Intent(context, LessonAlarmReceiver::class.java)
+                val pending = PendingIntent.getBroadcast(
+                    context,
+                    requestCode,
+                    intent,
+                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+                )
+                if (pending != null) alarmManager.cancel(pending)
+            }
+        }
     }
 }

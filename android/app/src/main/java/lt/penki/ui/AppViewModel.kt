@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import lt.penki.BuildConfig
 import lt.penki.data.ApiException
+import lt.penki.data.Feedback
+import lt.penki.data.GoogleSheetsConfig
 import lt.penki.data.Invite
 import lt.penki.data.Klass
 import lt.penki.data.LessonTime
@@ -21,25 +23,40 @@ import lt.penki.data.Profile
 import lt.penki.data.Rating
 import lt.penki.data.Supabase
 import lt.penki.data.TeacherClass
+import lt.penki.data.UpdateManifest
+import lt.penki.data.Updater
 import lt.penki.notify.Notifications
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 enum class Screen { Setup, Login, Register, Activation, Home, Admin, Settings }
 
+/** Naujinimo pranešimas viršuje – dingsta pats po 10 sekundžių, jei nieko nedaroma. */
+data class UpdateInfo(
+    val version: String,
+    val notes: String = "",
+    val downloading: Boolean = false,
+    val progress: Int = 0,
+    val file: File? = null
+)
+
 data class UiState(
     val loading: Boolean = true,
     val busy: Boolean = false,
     val screen: Screen = Screen.Login,
     val profile: Profile? = null,
+    val update: UpdateInfo? = null,
     val classes: List<Klass> = emptyList(),
     val myRatings: List<Rating> = emptyList(),
     val teachers: List<Profile> = emptyList(),
     val invites: List<Invite> = emptyList(),
     val assignments: List<TeacherClass> = emptyList(),
     val lessonTimes: List<LessonTime> = emptyList(),
+    val sheetsConfig: GoogleSheetsConfig? = null,
     val allRatings: List<Rating> = emptyList(),
+    val feedback: List<Feedback> = emptyList(),
     val debugLog: List<String> = emptyList(),
     val notice: String? = null,
     val noticeIsError: Boolean = true
@@ -55,6 +72,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = Prefs(app)
     private val api = Supabase(prefs)
+    private val updater = Updater()
+
+    /** Versijos aprašas, kurį aptikome; saugomas tol, kol pranešimas rodomas. */
+    private var updateManifest: UpdateManifest? = null
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -169,6 +190,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun logout() {
         viewModelScope.launch {
             Notifications.cancelAll(getApplication())
+            prefs.scheduleTeacherId = ""
             try {
                 api.signOut()
             } catch (_: Exception) {
@@ -187,7 +209,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val profile = api.profile()
                 if (!profile.isTeacher) {
                     _state.update {
-                        it.copy(loading = false, profile = profile, screen = Screen.Activation)
+                        it.copy(loading = false, busy = false, profile = profile, screen = Screen.Activation)
                     }
                     return@launch
                 }
@@ -197,10 +219,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val assigned = runCatching { api.myTeacherClasses() }.getOrDefault(emptyList())
                     if (assigned.isEmpty()) classes else classes.filter { klass -> assigned.any { it.class_id == klass.id } }
                 }
-                loadLessonTimes()
+                _state.update { it.copy(profile = profile) }
+                Lessons.useTeacher(prefs, profile.id)
+                loadLessonTimes(profile.id)
                 _state.update {
                     it.copy(
                         loading = false,
+                        busy = false,
                         profile = profile,
                         classes = visible,
                         myRatings = mine,
@@ -209,6 +234,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 if (profile.isAdmin) loadAdminData()
                 Notifications.scheduleUpcoming(getApplication())
+                checkForUpdate()
             } catch (e: Exception) {
                 handle(e)
             }
@@ -226,7 +252,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val assigned = runCatching { api.myTeacherClasses() }.getOrDefault(emptyList())
                     if (assigned.isEmpty()) classes else classes.filter { klass -> assigned.any { it.class_id == klass.id } }
                 }
-                loadLessonTimes()
+                profile?.id?.let { loadLessonTimes(it) }
                 _state.update { it.copy(busy = false, classes = visible, myRatings = mine) }
                 if (_state.value.isAdmin) loadAdminData()
             } catch (e: Exception) {
@@ -236,15 +262,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Nuskaito pamokų laikus iš serverio ir išsaugo telefone priminimams. */
-    private suspend fun loadLessonTimes() {
-        val times = runCatching { api.lessonTimes() }.getOrNull()
-        if (times.isNullOrEmpty()) {
-            Lessons.applySaved(prefs)
-            return
+    private suspend fun loadLessonTimes(teacherId: String = _state.value.profile?.id ?: prefs.userId) {
+        if (teacherId == _state.value.profile?.id) Lessons.useTeacher(prefs, teacherId)
+        val times = api.lessonTimes(teacherId)
+        if (times.isNotEmpty()) {
+            Lessons.setSchedule(prefs, teacherId, times.map { it.lesson_no to it.ends_at })
         }
-        Lessons.applyServer(prefs, times.map { it.ends_at })
-        _state.update { it.copy(lessonTimes = times.sortedBy { time -> time.lesson_no }) }
+        if (teacherId == _state.value.profile?.id || _state.value.isAdmin) {
+            _state.update {
+                it.copy(
+                    lessonTimes = if (times.isNotEmpty()) times.sortedBy { time -> time.lesson_no }
+                    else Lessons.scheduleFor(teacherId).mapIndexed { index, time ->
+                        LessonTime(index + 1, time.format(Lessons.timeFormatter), teacherId)
+                    }
+                )
+            }
+        }
     }
+
+    fun loadTeacherLessonTimes(teacherId: String) {
+        if (!_state.value.isAdmin) return
+        viewModelScope.launch {
+            try {
+                loadAdminTeacherLessonTimes(teacherId)
+            } catch (e: Exception) {
+                handle(e)
+            }
+        }
+    }
+
 
     fun saveRating(
         classId: String,
@@ -259,13 +305,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.update { it.copy(busy = true, notice = null) }
             try {
-                api.saveRating(classId, lessonNo, score, comment, LocalDate.now().toString())
+                val rating = api.saveRating(classId, lessonNo, score, comment, LocalDate.now().toString())
+                val sheetsResult = rating.id?.let { id ->
+                    runCatching { api.appendRatingToGoogleSheets(id) }.getOrNull()
+                }
                 val mine = api.myRatings()
                 _state.update {
                     it.copy(
                         busy = false,
                         myRatings = mine,
-                        notice = "$lessonNo-a pamoka įvertinta: $score/5.",
+                        notice = when {
+                            sheetsResult?.exported == true -> "$lessonNo-a pamoka įvertinta: $score/5 ir įrašyta į Google Sheets."
+                            sheetsResult?.skipped == true -> "$lessonNo-a pamoka įvertinta: $score/5. Eksportas išjungtas."
+                            sheetsResult?.ok == true -> "$lessonNo-a pamoka įvertinta: $score/5."
+                            else -> "$lessonNo-a pamoka įvertinta: $score/5. Eksportas į Sheets nepatvirtintas – administratorius turėtų patikrinti dokumento prieigą ir vėliau eksportuoti šį vertinimą."
+                        },
                         noticeIsError = false
                     )
                 }
@@ -315,13 +369,78 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val invites = api.invites()
         val ratings = api.allRatings()
         val assignments = api.allTeacherClasses()
+        val feedback = runCatching { api.feedback() }.getOrDefault(emptyList())
+        val sheetsConfig = runCatching { api.googleSheetsConfig().firstOrNull() }.getOrNull()
         _state.update {
             it.copy(
                 teachers = teachers,
                 invites = invites,
                 allRatings = ratings,
-                assignments = assignments
+                sheetsConfig = sheetsConfig,
+                assignments = assignments,
+                feedback = feedback
             )
+        }
+    }
+
+    private suspend fun loadAdminTeacherLessonTimes(teacherId: String) {
+        val times = api.lessonTimes(teacherId)
+        if (times.isNotEmpty()) {
+            Lessons.setSchedule(prefs, teacherId, times.map { it.lesson_no to it.ends_at })
+        }
+        _state.update {
+            it.copy(
+                lessonTimes = if (times.isNotEmpty()) times.sortedBy { time -> time.lesson_no }
+                else Lessons.scheduleFor(teacherId).mapIndexed { index, time ->
+                    LessonTime(index + 1, time.format(Lessons.timeFormatter), teacherId)
+                }
+            )
+        }
+    }
+
+    fun sendFeedback(message: String) {
+        if (message.isBlank()) return notice("Įrašykite atsiliepimą.", true)
+        if (message.length > 1000) return notice("Atsiliepimas per ilgas (maks. 1000 simbolių).", true)
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, notice = null) }
+            try {
+                api.sendFeedback(message)
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        notice = "Atsiliepimas išsiųstas. Ačiū!",
+                        noticeIsError = false
+                    )
+                }
+            } catch (e: Exception) {
+                handle(e)
+            }
+        }
+    }
+
+    fun markFeedbackRead(id: String) {
+        if (!_state.value.isAdmin) return
+        viewModelScope.launch {
+            try {
+                api.markFeedbackRead(id)
+                val feedback = runCatching { api.feedback() }.getOrDefault(_state.value.feedback)
+                _state.update { it.copy(feedback = feedback) }
+            } catch (e: Exception) {
+                handle(e)
+            }
+        }
+    }
+
+    fun deleteFeedback(id: String) {
+        if (!_state.value.isAdmin) return
+        viewModelScope.launch {
+            try {
+                api.deleteFeedback(id)
+                val feedback = runCatching { api.feedback() }.getOrDefault(_state.value.feedback.filter { it.id != id })
+                _state.update { it.copy(feedback = feedback) }
+            } catch (e: Exception) {
+                handle(e)
+            }
         }
     }
 
@@ -396,13 +515,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addClass(name: String) {
+    /** Prideda klasę; laukelis valomas tik sėkmingai įrašius ( ClassesTab ). */
+    fun addClass(name: String, onAdded: () -> Unit) {
         if (name.isBlank()) return notice("Įrašykite klasės pavadinimą.", true)
         viewModelScope.launch {
             try {
                 api.addClass(name)
                 val classes = api.classes()
                 _state.update { it.copy(classes = classes, notice = "Klasė pridėta.", noticeIsError = false) }
+                onAdded()
             } catch (e: Exception) {
                 handle(e)
             }
@@ -438,21 +559,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------ pamokų laikai
 
-    fun saveLessonTime(lessonNo: Int, text: String) {
+    fun saveLessonTime(teacherId: String, lessonNo: Int, text: String) {
+        if (!_state.value.isAdmin) return notice("Šį veiksmą gali atlikti tik administratorius.", true)
+        if (teacherId.isBlank() || lessonNo !in 1..Lessons.MAX_LESSONS) {
+            return notice("Pasirinkite mokytoją ir galiojantį pamokos numerį.", true)
+        }
         val time = Lessons.parseOne(text)
             ?: return notice("Laikas turi būti HH:mm formatu (pvz. 09:40).", true)
         val formatted = time.format(Lessons.timeFormatter)
         viewModelScope.launch {
             _state.update { it.copy(busy = true, notice = null) }
             try {
-                api.saveLessonTime(lessonNo, formatted)
-                loadLessonTimes()
-                Notifications.scheduleUpcoming(getApplication())
-                logDebug("$lessonNo-a pamoka baigiasi $formatted")
+                api.saveLessonTime(teacherId, lessonNo, formatted)
+                loadLessonTimes(teacherId)
+                if (teacherId == _state.value.profile?.id) {
+                    Notifications.scheduleUpcoming(getApplication())
+                }
+                logDebug("$teacherId: $lessonNo-a pamoka baigiasi $formatted")
                 _state.update {
                     it.copy(
                         busy = false,
-                        notice = "$lessonNo-a pamoka dabar baigiasi $formatted. Priminimai perplanuoti.",
+                        notice = "Mokytojo pamokos laikas pakeistas į $formatted.",
                         noticeIsError = false
                     )
                 }
@@ -462,47 +589,85 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addLesson() {
-        if (Lessons.count >= Lessons.MAX_LESSONS) {
+    fun addLesson(teacherId: String) {
+        if (!_state.value.isAdmin) return
+        val schedule = _state.value.lessonTimes
+            .filter { it.teacher_id == teacherId }
+            .sortedBy { it.lesson_no }
+            .mapNotNull { Lessons.parseOne(it.ends_at) }
+            .ifEmpty { Lessons.scheduleFor(teacherId) }
+        if (schedule.size >= Lessons.MAX_LESSONS) {
             return notice("Daugiausia ${Lessons.MAX_LESSONS} pamokų.", true)
         }
-        val last = Lessons.ends.lastOrNull() ?: LocalTime.of(8, 45)
-        saveLessonTime(Lessons.count + 1, last.plusMinutes(55).format(Lessons.timeFormatter))
+        val last = schedule.lastOrNull() ?: LocalTime.of(8, 45)
+        saveLessonTime(teacherId, schedule.size + 1, last.plusMinutes(55).format(Lessons.timeFormatter))
     }
 
-    fun removeLesson(lessonNo: Int) {
-        if (Lessons.count <= 1) return notice("Turi likti bent viena pamoka.", true)
-        if (lessonNo != Lessons.count) return notice("Šalinti galima tik paskutinę pamoką.", true)
+    fun removeLesson(teacherId: String, lessonNo: Int) {
+        if (!_state.value.isAdmin) return
+        if (teacherId.isBlank()) return
+        val teacherLessons = _state.value.lessonTimes.filter { it.teacher_id == teacherId }
+        val lessonCount = teacherLessons.maxOfOrNull { it.lesson_no } ?: Lessons.scheduleFor(teacherId).size
+        if (lessonCount <= 1) return notice("Turi likti bent viena pamoka.", true)
+        if (lessonNo != lessonCount) return notice("Šalinti galima tik paskutinę pamoką.", true)
         viewModelScope.launch {
             try {
-                api.deleteLessonTime(lessonNo)
-                loadLessonTimes()
-                Notifications.scheduleUpcoming(getApplication())
-                logDebug("$lessonNo-a pamoka pašalinta")
-                _state.update { it.copy(notice = "$lessonNo-a pamoka pašalinta.", noticeIsError = false) }
+                api.deleteLessonTime(teacherId, lessonNo)
+                loadLessonTimes(teacherId)
+                if (teacherId == _state.value.profile?.id) Notifications.scheduleUpcoming(getApplication())
+                logDebug("$teacherId: $lessonNo-a pamoka pašalinta")
+                _state.update { it.copy(notice = "Mokytojo pamoka pašalinta.", noticeIsError = false) }
             } catch (e: Exception) {
                 handle(e)
             }
         }
     }
 
-    fun resetLessonTimes() {
+    fun resetLessonTimes(teacherId: String) {
+        if (!_state.value.isAdmin || teacherId.isBlank()) return
         viewModelScope.launch {
             _state.update { it.copy(busy = true, notice = null) }
             try {
-                _state.value.lessonTimes
-                    .filter { it.lesson_no > Lessons.defaults.size }
-                    .forEach { api.deleteLessonTime(it.lesson_no) }
+                api.lessonTimes(teacherId).forEach { api.deleteLessonTime(teacherId, it.lesson_no) }
                 Lessons.defaults.forEachIndexed { index, time ->
-                    api.saveLessonTime(index + 1, time.format(Lessons.timeFormatter))
+                    api.saveLessonTime(teacherId, index + 1, time.format(Lessons.timeFormatter))
                 }
-                loadLessonTimes()
-                Notifications.scheduleUpcoming(getApplication())
-                logDebug("Pamokų laikai atstatyti į numatytuosius")
+                loadLessonTimes(teacherId)
+                if (teacherId == _state.value.profile?.id) Notifications.scheduleUpcoming(getApplication())
+                logDebug("$teacherId: pamokų laikai atstatyti")
                 _state.update {
                     it.copy(
                         busy = false,
-                        notice = "Pamokų laikai atstatyti į numatytuosius.",
+                        notice = "Šio mokytojo pamokų laikai atstatyti į numatytuosius.",
+                        noticeIsError = false
+                    )
+                }
+            } catch (e: Exception) {
+                handle(e)
+            }
+        }
+    }
+
+    fun saveSheetsConfig(enabled: Boolean, spreadsheetId: String, sheetName: String, sheetPerTeacher: Boolean) {
+        if (!_state.value.isAdmin) return notice("Šį veiksmą gali atlikti tik administratorius.", true)
+        val documentId = spreadsheetId.trim().let { value ->
+            Regex("/spreadsheets/d/([^/?#]+)").find(value)?.groupValues?.getOrNull(1) ?: value
+        }
+        if (enabled && documentId.isBlank()) return notice("Įrašykite Google dokumento ID.", true)
+        if (enabled && !Regex("^[a-zA-Z0-9_-]{10,}$").matches(documentId)) {
+            return notice("Netinkamas Google Sheets dokumento ID arba URL.", true)
+        }
+        if (sheetName.isBlank()) return notice("Įrašykite lapo pavadinimą.", true)
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, notice = null) }
+            try {
+                api.saveGoogleSheetsConfig(enabled, documentId, sheetName, sheetPerTeacher)
+                val config = api.googleSheetsConfig().firstOrNull()
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        sheetsConfig = config,
+                        notice = "Google Sheets nustatymai išsaugoti.",
                         noticeIsError = false
                     )
                 }
@@ -708,6 +873,71 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun logDebug(line: String) {
         val stamp = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
         _state.update { it.copy(debugLog = (listOf("$stamp $line") + it.debugLog).take(30)) }
+    }
+
+    // ------------------------------------------------------------ naujinimai
+
+    /**
+     * Patikrina repozitoriją dėl naujesnės versijos. Klausa tyli, niekada
+     * nerodo klaidos – jei nepavyko, tiesiog neįvyksta.
+     */
+    private fun checkForUpdate() {
+        if (_state.value.update != null) return
+        viewModelScope.launch {
+            val manifest = updater.check(BuildConfig.VERSION_NAME) ?: return@launch
+            if (_state.value.update != null) return@launch
+            updateManifest = manifest
+            _state.update {
+                it.copy(update = UpdateInfo(version = manifest.version, notes = manifest.notes))
+            }
+        }
+    }
+
+    /** Atsisiunčia naujinį ir iš karto atidaro diegimo ekraną. */
+    fun downloadUpdate() {
+        val manifest = updateManifest ?: return
+        val current = _state.value.update ?: return
+        if (current.downloading) return
+        if (current.file != null) {
+            installUpdate(current.file)
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(update = it.update?.copy(downloading = true, progress = 0)) }
+            try {
+                val file = updater.download(getApplication(), manifest) { percent ->
+                    _state.update { it.copy(update = it.update?.copy(progress = percent)) }
+                }
+                _state.update { it.copy(update = it.update?.copy(downloading = false, file = file)) }
+                installUpdate(file)
+            } catch (e: Exception) {
+                _state.update { it.copy(update = it.update?.copy(downloading = false)) }
+                handle(e)
+            }
+        }
+    }
+
+    /** Pašalina naujinio pranešimą (ir po jo paspaudimo, ir savaime po 10 s). */
+    fun dismissUpdate() {
+        updateManifest = null
+        _state.update { it.copy(update = null) }
+    }
+
+    private fun installUpdate(file: File) {
+        val app = getApplication<Application>()
+        if (!updater.canInstall(app)) {
+            updater.openInstallPermission(app)
+            notice(
+                "Leiskite šiai programai diegti programas ir bakstelėkite „Įdiegti“ dar kartą.",
+                true
+            )
+            return
+        }
+        try {
+            updater.install(app, file)
+        } catch (e: Exception) {
+            handle(e)
+        }
     }
 
     // ------------------------------------------------------------ nustatymai

@@ -292,30 +292,34 @@ class Supabase(val prefs: Prefs) {
 
     // ---------------------------------------------------------------- Pamokų laikai
 
-    suspend fun lessonTimes(): List<LessonTime> {
+    suspend fun lessonTimes(teacherId: String = prefs.userId): List<LessonTime> {
         val token = freshToken()
         val raw = execute(
             "GET",
-            "/rest/v1/lesson_times?select=lesson_no,ends_at&order=lesson_no.asc",
+            "/rest/v1/lesson_times?select=teacher_id,lesson_no,ends_at&teacher_id=eq.$teacherId&order=lesson_no.asc",
             token = token
         )
         return json.decodeFromString(raw)
     }
 
-    suspend fun saveLessonTime(lessonNo: Int, endsAt: String) {
+    suspend fun saveLessonTime(teacherId: String, lessonNo: Int, endsAt: String) {
         val token = freshToken()
         execute(
             "POST",
-            "/rest/v1/lesson_times?on_conflict=lesson_no",
-            json.encodeToString(NewLessonTime(lessonNo, endsAt)),
+            "/rest/v1/lesson_times?on_conflict=teacher_id,lesson_no",
+            json.encodeToString(NewLessonTime(teacherId, lessonNo, endsAt)),
             token,
             prefer = "resolution=merge-duplicates"
         )
     }
 
-    suspend fun deleteLessonTime(lessonNo: Int) {
+    suspend fun deleteLessonTime(teacherId: String, lessonNo: Int) {
         val token = freshToken()
-        execute("DELETE", "/rest/v1/lesson_times?lesson_no=eq.$lessonNo", token = token)
+        execute(
+            "DELETE",
+            "/rest/v1/lesson_times?teacher_id=eq.$teacherId&lesson_no=eq.$lessonNo",
+            token = token
+        )
     }
 
     // ---------------------------------------------------------------- Vertinimai
@@ -330,14 +334,32 @@ class Supabase(val prefs: Prefs) {
         return json.decodeFromString(raw)
     }
 
+    /**
+     * Visi vertinimai, puslapiuojant.
+     *
+     * Anksčiau čia buvo `limit=500`, todėl nuo 500-ojo vertinimo admino
+     * statistika buvo neteisinga ir „iš viso“, ir vidurkiai būtų skaičiuojami
+     * iš nutrūkusios imties.
+     */
     suspend fun allRatings(): List<Rating> {
         val token = freshToken()
-        val raw = execute(
-            "GET",
-            "/rest/v1/ratings?select=*,classes(id,name),profiles(full_name)&order=created_at.desc&limit=500",
-            token = token
-        )
-        return json.decodeFromString(raw)
+        val pageSize = 1000
+        val maxRows = 10000
+        val query = "select=*,classes(id,name),profiles(full_name)&order=created_at.desc,id.desc"
+        val all = ArrayList<Rating>(pageSize)
+        var offset = 0
+        while (all.size < maxRows) {
+            val raw = execute(
+                "GET",
+                "/rest/v1/ratings?$query&limit=$pageSize&offset=$offset",
+                token = token
+            )
+            val page: List<Rating> = json.decodeFromString(raw)
+            all.addAll(page)
+            if (page.size < pageSize) break
+            offset += pageSize
+        }
+        return all
     }
 
     suspend fun saveRating(
@@ -380,6 +402,42 @@ class Supabase(val prefs: Prefs) {
         )
         return json.decodeFromString<List<Rating>>(raw).firstOrNull()
             ?: throw ApiException("Vertinimas neišsaugotas. Bandykite dar kartą.")
+    }
+
+    suspend fun appendRatingToGoogleSheets(ratingId: String): SheetsAppendResult {
+        val token = freshToken()
+        val body = json.encodeToString(SheetsAppendRequest(ratingId))
+        val raw = execute("POST", "/functions/v1/export-rating-to-sheets", body, token)
+        return json.decodeFromString(raw)
+    }
+
+    suspend fun saveGoogleSheetsConfig(enabled: Boolean, spreadsheetId: String, sheetName: String, sheetPerTeacher: Boolean) {
+        val token = freshToken()
+        execute(
+            "POST",
+            "/rest/v1/google_sheets_config?on_conflict=id",
+            json.encodeToString(
+                GoogleSheetsConfig(
+                    id = true,
+                    enabled = enabled,
+                    spreadsheet_id = spreadsheetId.trim(),
+                    sheet_name = sheetName.trim().ifBlank { "Vertinimai" },
+                    sheet_per_teacher = sheetPerTeacher
+                )
+            ),
+            token,
+            prefer = "resolution=merge-duplicates"
+        )
+    }
+
+    suspend fun googleSheetsConfig(): List<GoogleSheetsConfig> {
+        val token = freshToken()
+        val raw = execute(
+            "GET",
+            "/rest/v1/google_sheets_config?select=id,enabled,spreadsheet_id,sheet_name,sheet_per_teacher&id=eq.true",
+            token = token
+        )
+        return json.decodeFromString(raw)
     }
 
     // ---------------------------------------------------------------- Kvietimai
@@ -471,5 +529,46 @@ class Supabase(val prefs: Prefs) {
     suspend fun deleteAllInvites() {
         val token = freshToken()
         execute("DELETE", "/rest/v1/invites?id=not.is.null", token = token)
+    }
+
+    // ---------------------------------------------------------------- Atsiliepimai (feedback)
+
+    suspend fun sendFeedback(message: String): Feedback {
+        val token = freshToken()
+        val body = json.encodeToString(NewFeedback(prefs.userId, message.trim()))
+        val raw = execute(
+            "POST",
+            "/rest/v1/feedback",
+            body,
+            token,
+            prefer = "return=representation"
+        )
+        return json.decodeFromString<List<Feedback>>(raw).firstOrNull()
+            ?: throw ApiException("Atsiliepimas neišsiųstas. Bandykite dar kartą.")
+    }
+
+    suspend fun feedback(): List<Feedback> {
+        val token = freshToken()
+        val raw = execute(
+            "GET",
+            "/rest/v1/feedback?select=*,profiles(id,email,full_name)&order=created_at.desc",
+            token = token
+        )
+        return json.decodeFromString(raw)
+    }
+
+    suspend fun markFeedbackRead(id: String) {
+        val token = freshToken()
+        execute(
+            "PATCH",
+            "/rest/v1/feedback?id=eq.$id",
+            json.encodeToString(PatchFeedbackRead(true)),
+            token
+        )
+    }
+
+    suspend fun deleteFeedback(id: String) {
+        val token = freshToken()
+        execute("DELETE", "/rest/v1/feedback?id=eq.$id", token = token)
     }
 }

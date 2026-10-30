@@ -6,6 +6,16 @@ administratorius mato visų mokytojų vertinimus ir **tik jis gali pakviesti mok
 
 Sąsaja – lietuvių kalba.
 
+## Atsisiuntimas
+
+Naujausią APK rasite puslapyje [Releases](https://github.com/er1-cc/penki/releases):
+
+- [penki-1.5.apk](https://github.com/er1-cc/penki/releases/latest) – naujausia versija (individualūs mokytojų tvarkaraščiai ir „Google Sheets“ eksportas).
+- Senesnės versijos (`1.0`–`1.4`) taip pat paskelbtos to paties puslapio archyve.
+
+Programėlė pati pasitikrina `version.json` ir pasiūlo atsisiųsti naujinį – pranešimas viršuje
+dingsta pats po 10 sekundžių.
+
 ## Funkcijos
 
 - **Mokytojas**
@@ -17,8 +27,9 @@ Sąsaja – lietuvių kalba.
   - mokytojų sąrašas: patvirtinimas, aktyvavimas / išjungimas, administratoriaus teisių suteikimas,
   - **mokytojo klasės**: kiekvienam mokytojui pažymima, kurias klases jis vertina
     (nepažymėjus – rodomos visos klasės),
-  - **pamokų laikai**: kiekvienos pamokos pabaigos laikas keičiamas programoje
-    (pamokų skaičių galima padidinti iki 10), pakeitimai iškart perplanuoja priminimus,
+  - **pamokų laikai**: kiekvieno mokytojo pamokų pabaigos laikai keičiami atskirai
+    (pamokų skaičių galima padidinti iki 10), pakeitimai iškart perplanuoja jo priminimus,
+  - **Google Sheets**: nustatomas dokumento ID, lapo vardas ir pasirenkama, ar kiekvienam mokytojui kurti atskirą lapą; vertinimas eksportuojamas serverio funkcija,
   - **kvietimai**: sukuriamas vienkartinis 6 simbolių kodas konkrečiam el. paštui (galioja 14 d.),
   - klasių sąrašo valdymas,
   - statistika: bendras vidurkis, vidurkiai pagal klases ir mokytojus, naujausi komentarai,
@@ -39,7 +50,7 @@ android/                 Android programa (Kotlin + Jetpack Compose)
     notify/              pranešimai (AlarmManager, boot receiver)
     ui/                  ekranai: prisijungimas, vertinimas, admin panelė, nustatymai
 supabase/schema.sql      duomenų bazės schema, RLS taisyklės, kvietimo funkcija
-artifacts/penki-1.2.apk  sukompiliuotas APK (debug parašas), Supabase reikšmės jau įrašytos
+artifacts/penki-1.5.apk  naujausias APK (debug parašas), Supabase reikšmės jau įrašytos
 ```
 
 ## 1. Supabase paruošimas
@@ -66,7 +77,7 @@ artifacts/penki-1.2.apk  sukompiliuotas APK (debug parašas), Supabase reikšmė
 
 ## 2. Programos prijungimas prie Supabase
 
-**Šiame APK (`artifacts/penki-1.1.apk`) reikšmės jau įrašytos** – projektas
+**Šiame APK (`artifacts/penki-1.5.apk`) reikšmės jau įrašytos** – projektas
 `https://ypnulvhcrhxcfpfbwath.supabase.co` ir `anon` raktas. Paleidus programą iškart rodomas
 prisijungimo ekranas, nieko vesti nereikia.
 
@@ -102,7 +113,7 @@ Release versijai (reikės savo parašo):
 
 ## 4. Diegimas telefone
 
-1. Nukopijuok `artifacts/penki-1.2.apk` į telefoną (arba atsiųsk per „Drive“ / el. paštą).
+1. Nukopijuok `artifacts/penki-1.5.apk` į telefoną (arba atsiųsk per „Drive“ / el. paštą).
 2. Atidaryk failą → Android paprašys leisti diegti iš šio šaltinio → **Leisti**.
 3. Pirmą kartą paleidus: įvesk Supabase URL ir anon raktą (jei neįrašei į APK),
    tada prisijunk su administratoriaus paskyra.
@@ -113,7 +124,7 @@ APK yra su **debug parašu** – tinka diegti į telefoną ir testuoti, bet ne �
 ## 5. Darbo eiga mokykloje
 
 1. Administratorius prisijungia → **Admin → Klasės**: surašo klases (pvz. `7b`, `8a`, `11`).
-2. **Admin → Laikai**: patikslina, kada baigiasi kiekviena pamoka (numatyti 8:45–14:15).
+2. **Admin → Laikai**: pasirenka mokytoją ir nustato tik jo pamokų pabaigos laikus (numatyti 8:45–14:15).
 3. **Admin → Kvietimai**: įveda mokytojo el. paštą → gauna 6 simbolių kodą → nusiunčia mokytojui.
 4. Mokytojas telefone: **Registruotis su kvietimo kodu** → įveda vardą, el. paštą, slaptažodį ir kodą.
    Paskyra iškart aktyvuojama (kodas vienkartinis, galioja 14 dienų).
@@ -154,9 +165,20 @@ sesija per RLS, jokių slaptų raktų programoje nėra.
 - **Pavojingos operacijos** – „Ištrinti visus vertinimus“ ir „Ištrinti visus kvietimus“
   (prašo patvirtinimo, negrįžtama).
 
+## 8. Google Sheets eksportas
+
+1. Google Cloud Console sukurk projektą, įjunk **Google Sheets API** ir sukurk **Service Account**.
+2. Service Account skiltyje sukurk JSON raktą. Neįtrauk jo į repo ir niekada neįrašyk į APK.
+3. Iš JSON nukopijuok `client_email` reikšmę ir pasidalyk skaičiuokle su tuo adresu, suteikdamas **Editor** teises.
+4. Supabase Dashboard → **Project Settings → Edge Functions → Secrets** pridėk paslaptį `GOOGLE_SERVICE_ACCOUNT_JSON`, kaip jos reikšmę įklijuok visą JSON failo turinį. Nesiųsk rakto pokalbyje.
+5. Programoje atsidaryk **Admin → Sheets**: įrašyk dokumento ID (šiam projektui jis jau nustatytas), lapo pavadinimą, pasirink bendrą arba atskirą lapą mokytojui, įjunk eksportą ir išsaugok.
+6. Po sėkmingo mikroklimato vertinimo serveris įrašys klasę, balą, komentarą, mokytojo vardą, datą ir pamoką į skaičiuoklę. Jei siuntimas nepavyksta, patikrink service-account prieigą ir Supabase funkcijos paslaptį.
+
+> Google raktą saugo tik Supabase Edge Function. Prieš įjungiant eksportą įsitikink, kad `GOOGLE_SERVICE_ACCOUNT_JSON` nustatytas ir skaičiuoklė pasidalyta su service account.
+
 ## Apribojimai
 
-- Savaitgaliais priminimai nesiunčiami, pamokų tvarkaraštis – vienodas visomis dienomis.
+- Savaitgaliais priminimai nesiunčiami; kiekvieno mokytojo tvarkaraštis vienodas visomis savaitės dienomis.
 - Nėra pamokų tvarkaraščio importo ir mokyklos prisijungimo per SSO.
 - Vertinimas – vienas balsas vienai klasei vienai pamokai per dieną (pakartotinis įrašas atnaujina balą).
 - Statistika skaičiuojama telefone iš paskutinių 500 vertinimų.

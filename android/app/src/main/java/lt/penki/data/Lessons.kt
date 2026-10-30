@@ -4,13 +4,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
-/**
- * Pamokų pabaigos laikai.
- *
- * Numatytosios reikšmės naudojamos pirmą kartą paleidus programą. Administratorius
- * laikus keičia admin panelėje – jie saugomi serveryje (`lesson_times`) ir telefone,
- * kad priminimai veiktų ir be interneto.
- */
+/** Pamokų pabaigos laikai mokytojo paskyrai. */
 object Lessons {
 
     val defaults: List<LocalTime> = listOf(
@@ -24,51 +18,91 @@ object Lessons {
     )
 
     const val MAX_LESSONS = 10
-
-    private var times: List<LocalTime> = defaults
-
+    private var schedules: Map<String, List<LocalTime>> = emptyMap()
+    private var currentTeacherId: String = ""
     val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-    /** Galiojantys pamokų pabaigos laikai (ilgis = pamokų skaičius). */
-    val ends: List<LocalTime> get() = times
-
-    val count: Int get() = times.size
-
-    /** Pamokų numeriai, pvz. 1..7. */
-    val numbers: IntRange get() = 1..times.size
+    val ends: List<LocalTime> get() = scheduleFor(currentTeacherId)
+    val count: Int get() = ends.size
+    val numbers: IntRange get() = 1..count
 
     fun endOf(lessonNo: Int): LocalTime =
-        times.getOrElse(lessonNo - 1) { times.lastOrNull() ?: LocalTime.of(8, 45) }
+        ends.getOrElse(lessonNo - 1) { ends.lastOrNull() ?: LocalTime.of(8, 45) }
 
     fun endText(lessonNo: Int): String = endOf(lessonNo).format(timeFormatter)
-
     fun today(): LocalDate = LocalDate.now()
 
-    /** Nuskaito laikus iš telefono atminties (reikia po telefono perkrovimo). */
+    fun useTeacher(prefs: Prefs, teacherId: String) {
+        currentTeacherId = teacherId
+        schedules = parseSchedules(prefs.lessonEndsByTeacher)
+        if (schedules.isEmpty()) {
+            val legacy = parse(prefs.lessonEnds)
+            if (legacy.isNotEmpty()) schedules = mapOf(teacherId to legacy)
+        }
+        prefs.scheduleTeacherId = teacherId
+        prefs.lessonEnds = scheduleFor(teacherId).joinToString(",") { it.format(timeFormatter) }
+    }
+
+    fun scheduleFor(teacherId: String): List<LocalTime> =
+        schedules[teacherId].orEmpty().ifEmpty { defaults }
+
+    fun setSchedule(prefs: Prefs, teacherId: String, raw: List<Pair<Int, String>>) {
+        val ordered = raw.sortedBy { it.first }
+        if (ordered.isEmpty()) return
+        if (ordered.map { it.first } != (1..ordered.size).toList()) return
+        val parsed = ordered.mapNotNull { parseOne(it.second) }
+        if (parsed.size != ordered.size) return
+        val updated = schedules.toMutableMap().apply { put(teacherId, parsed) }
+        schedules = updated
+        persistSchedules(prefs, updated)
+        if (teacherId == currentTeacherId) {
+            prefs.lessonEnds = parsed.joinToString(",") { it.format(timeFormatter) }
+        }
+    }
+
     fun applySaved(prefs: Prefs) {
-        times = parse(prefs.lessonEnds).ifEmpty { defaults }
+        currentTeacherId = prefs.scheduleTeacherId
+        schedules = parseSchedules(prefs.lessonEndsByTeacher)
+        val defaultSaved = parse(prefs.lessonEnds)
+        if (currentTeacherId.isNotBlank() && currentTeacherId !in schedules && defaultSaved.isNotEmpty()) {
+            schedules = schedules + (currentTeacherId to defaultSaved)
+        }
+        if (currentTeacherId.isNotBlank()) {
+            prefs.lessonEnds = scheduleFor(currentTeacherId).joinToString(",") { it.format(timeFormatter) }
+        }
     }
 
-    /** Įrašo laikus gautus iš serverio ir išsaugo telefone priminimams. */
-    fun applyServer(prefs: Prefs, raw: List<String>) {
-        val parsed = raw.mapNotNull(::parseOne)
-        if (parsed.isEmpty()) return
-        times = parsed
-        prefs.lessonEnds = parsed.joinToString(",") { it.format(timeFormatter) }
+    fun reset(prefs: Prefs, teacherId: String) {
+        schedules = schedules.toMutableMap().apply { remove(teacherId) }
+        persistSchedules(prefs, schedules)
+        if (teacherId == currentTeacherId) {
+            prefs.lessonEnds = defaults.joinToString(",") { it.format(timeFormatter) }
+        }
     }
 
-    /** Grąžina numatytuosius laikus (admin → debug / Laikai → Atstatyti). */
-    fun reset(prefs: Prefs) {
-        times = defaults
-        prefs.lessonEnds = defaults.joinToString(",") { it.format(timeFormatter) }
-    }
-
-    /** "14:15" arba "14:15:00" → LocalTime; netinkamas tekstas → null. */
     fun parseOne(text: String): LocalTime? = try {
         LocalTime.parse(text.trim().take(5), timeFormatter)
     } catch (_: Exception) {
         null
     }
+
+    private fun persistSchedules(prefs: Prefs, values: Map<String, List<LocalTime>>) {
+        prefs.lessonEndsByTeacher = values.entries.joinToString(";") { (teacherId, times) ->
+            "$teacherId=${times.joinToString(",") { it.format(timeFormatter) }}"
+        }
+        prefs.lessonEnds = scheduleFor(currentTeacherId).joinToString(",") { it.format(timeFormatter) }
+    }
+
+    private fun parseSchedules(raw: String): Map<String, List<LocalTime>> = raw
+        .split(';')
+        .mapNotNull { entry ->
+            val separator = entry.indexOf('=')
+            if (separator < 0) return@mapNotNull null
+            val teacherId = entry.substring(0, separator)
+            val times = parse(entry.substring(separator + 1))
+            if (times.isEmpty()) null else teacherId to times
+        }
+        .toMap()
 
     private fun parse(text: String): List<LocalTime> =
         text.split(',').mapNotNull(::parseOne)
