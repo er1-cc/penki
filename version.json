@@ -1,5 +1,5 @@
 {
-  "version": "1.6",
-  "apk": "artifacts/penki-1.6.apk",
-  "notes": "Admino tvarkaraštis: „Atsiųsti iš naujo“ nuskaito Google Sheets lentelę, sukuria mokytojus, pamokas ir klases bei leidžia priskirti paskyras."
+  "version": "1.7",
+  "apk": "artifacts/penki-1.7.apk",
+  "notes": "Klaidų taisymai: tvarkaraščio nuorodos atstatymas, apsauga nuo tuščio importo ir aiškesnė klaida, kai nuoroda nepaskelbta."
 }

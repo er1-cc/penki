@@ -870,7 +870,6 @@ private fun DebugTab(
     var teacherMenuOpen by remember { mutableStateOf(false) }
 
     var confirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
-    var showBrowser by remember { mutableStateOf(false) }
 
     val teachers = state.teachers.filter { it.role != "pending" }
     val selectedTeacher = teachers.firstOrNull { it.id == teacherId }

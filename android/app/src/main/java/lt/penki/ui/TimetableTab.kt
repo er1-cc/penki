@@ -47,16 +47,16 @@ internal fun TimetableTab(
     onMatch: () -> Unit,
     onApply: () -> Unit
 ) {
-    var url by remember { mutableStateOf("") }
-    var initialized by remember { mutableStateOf(false) }
+    var url by remember { mutableStateOf(TimetableParser.DEFAULT_URL) }
+    var edited by remember { mutableStateOf(false) }
     var menuFor by remember { mutableStateOf<String?>(null) }
     val profiles = state.teachers.filter { it.isTeacher }
 
+    // Serveryje išsaugota nuoroda įrašoma tada, kai duomenys ateina – bet neperrašome
+    // to, ką administratorius jau pradėjo redaguoti.
     LaunchedEffect(state.ttConfig) {
-        if (!initialized) {
-            url = state.ttConfig?.url?.takeIf { it.isNotBlank() } ?: TimetableParser.DEFAULT_URL
-            initialized = true
-        }
+        val saved = state.ttConfig?.url?.takeIf { it.isNotBlank() }
+        if (!edited && saved != null) url = saved
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -78,7 +78,10 @@ internal fun TimetableTab(
                 )
                 OutlinedTextField(
                     value = url,
-                    onValueChange = { url = it },
+                    onValueChange = {
+                        url = it
+                        edited = true
+                    },
                     label = { Text("Paskelbtos lentelės nuoroda") },
                     supportingText = { Text("Nuoroda su /pubhtml arba /pub ir output=csv") },
                     maxLines = 3,

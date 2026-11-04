@@ -65,6 +65,15 @@ object TimetableParser {
                     "Google Sheets atsakė klaida (HTTP ${res.code}). Patikrinkite, ar lentelė paskelbta internetui."
                 )
             }
+            // Nepaskelbta (redagavimo) nuoroda grąžina HTML puslapį, o ne CSV –
+            // be šios patikros parseris tik praneštų apie nerastą antraštę.
+            val contentType = res.header("Content-Type").orEmpty()
+            if (contentType.contains("html", ignoreCase = true)) {
+                throw ApiException(
+                    "Nuoroda grąžino ne CSV. Paskelbkite lentelę (File → Share → Publish to web) " +
+                        "ir naudokite /pub nuorodą su output=csv."
+                )
+            }
             if (text.isBlank()) throw ApiException("Google Sheets grąžino tuščią lentelę.")
             text
         }
@@ -132,6 +141,12 @@ object TimetableParser {
         }
 
         if (teachers.isEmpty()) throw ApiException("Lentelėje nepavyko rasti nė vieno mokytojo.")
+        // Apsauga nuo duomenų praradimo: tuščias sąrašas ištrintų visą tvarkaraštį serveryje.
+        if (lessons.isEmpty()) {
+            throw ApiException(
+                "Lentelėje nerasta pamokų su klasių kodais (pvz. 7b). Patikrinkite, ar tai ta pati tvarkaraščio lentelė."
+            )
+        }
         return ParsedTimetable(teachers.values.toList(), lessons.distinct())
     }
 

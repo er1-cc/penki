@@ -10,7 +10,7 @@ Sąsaja – lietuvių kalba.
 
 Naujausią APK rasite puslapyje [Releases](https://github.com/er1-cc/penki/releases):
 
-- [penki-1.6.apk](https://github.com/er1-cc/penki/releases/latest) – naujausia versija (admino mygtukas „Atsiųsti iš naujo“ nuskaito Google Sheets tvarkaraštį ir juo sudėlioja mokytojus, pamokas bei klases).
+- [penki-1.7.apk](https://github.com/er1-cc/penki/releases/latest) – naujausia versija (Google Sheets tvarkaraščio atsiuntimas ir klaidų taisymai).
 - Senesnės versijos (`1.0`–`1.4`) taip pat paskelbtos to paties puslapio archyve.
 
 Programėlė pati pasitikrina `version.json` ir pasiūlo atsisiųsti naujinį – pranešimas viršuje
@@ -53,7 +53,7 @@ android/                 Android programa (Kotlin + Jetpack Compose)
     notify/              pranešimai (AlarmManager, boot receiver)
     ui/                  ekranai: prisijungimas, vertinimas, admin panelė, nustatymai
 supabase/schema.sql      duomenų bazės schema, RLS taisyklės, kvietimo funkcija
-artifacts/penki-1.6.apk  naujausias APK (debug parašas), Supabase reikšmės jau įrašytos
+artifacts/penki-1.7.apk  naujausias APK (debug parašas), Supabase reikšmės jau įrašytos
 ```
 
 ## 1. Supabase paruošimas
@@ -80,7 +80,7 @@ artifacts/penki-1.6.apk  naujausias APK (debug parašas), Supabase reikšmės ja
 
 ## 2. Programos prijungimas prie Supabase
 
-**Šiame APK (`artifacts/penki-1.6.apk`) reikšmės jau įrašytos** – projektas
+**Šiame APK (`artifacts/penki-1.7.apk`) reikšmės jau įrašytos** – projektas
 `https://ypnulvhcrhxcfpfbwath.supabase.co` ir `anon` raktas. Paleidus programą iškart rodomas
 prisijungimo ekranas, nieko vesti nereikia.
 
@@ -116,7 +116,7 @@ Release versijai (reikės savo parašo):
 
 ## 4. Diegimas telefone
 
-1. Nukopijuok `artifacts/penki-1.6.apk` į telefoną (arba atsiųsk per „Drive“ / el. paštą).
+1. Nukopijuok `artifacts/penki-1.7.apk` į telefoną (arba atsiųsk per „Drive“ / el. paštą).
 2. Atidaryk failą → Android paprašys leisti diegti iš šio šaltinio → **Leisti**.
 3. Pirmą kartą paleidus: įvesk Supabase URL ir anon raktą (jei neįrašei į APK),
    tada prisijunk su administratoriaus paskyra.
@@ -209,4 +209,4 @@ Lentelė turi būti paskelbta („File → Share → Publish to web“) – tik 
 - Tvarkaraštis importuojamas tik mokytojo eilutėms – lentelės eilutės be mokytojo vardo (papildomi dalykai) praleidžiamos.
 - Nėra mokyklos prisijungimo per SSO.
 - Vertinimas – vienas balsas vienai klasei vienai pamokai per dieną (pakartotinis įrašas atnaujina balą).
-- Statistika skaičiuojama telefone iš paskutinių 500 vertinimų.
+- Statistika skaičiuojama telefone; įkeliama iki 10 000 naujausių vertinimų (puslapiais po 1000).
