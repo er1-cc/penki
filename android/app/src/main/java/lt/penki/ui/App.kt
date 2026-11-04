@@ -129,6 +129,10 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                 onRemoveLesson = viewModel::removeLesson,
                 onResetLessonTimes = viewModel::resetLessonTimes,
                 onSaveSheetsConfig = viewModel::saveSheetsConfig,
+                onRefetchTimetable = viewModel::refetchTimetable,
+                onAssignTimetableAccount = viewModel::assignTimetableAccount,
+                onMatchTimetableAccounts = viewModel::matchTimetableAccounts,
+                onApplyTimetableClasses = viewModel::applyTimetableClasses,
                 onLoadTeacherLessonTimes = viewModel::loadTeacherLessonTimes,
                 onDebugCreateAccount = viewModel::debugCreateAccount,
                 onDebugSeedRatings = viewModel::debugSeedRatings,
@@ -183,6 +187,11 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
     if (lesson != null) {
         RatingDialog(
             initialLesson = lesson,
+            initialClass = state.myTimetable
+                .firstOrNull {
+                    it.weekday == java.time.LocalDate.now().dayOfWeek.value && it.lesson_no == lesson
+                }
+                ?.class_name,
             classes = state.classes,
             busy = state.busy,
             onDismiss = { ratingLesson = null },

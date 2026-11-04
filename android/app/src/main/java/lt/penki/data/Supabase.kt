@@ -30,6 +30,14 @@ class Supabase(val prefs: Prefs) {
         isLenient = true
     }
 
+    /** Kai reikia siųsti ir tuščias (null) reikšmes, pvz. atšaukti mokytojo paskyros priskyrimą. */
+    private val jsonWithNulls = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        explicitNulls = true
+        isLenient = true
+    }
+
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -571,4 +579,45 @@ class Supabase(val prefs: Prefs) {
         val token = freshToken()
         execute("DELETE", "/rest/v1/feedback?id=eq.$id", token = token)
     }
+
+    // ---------------------------------------------------------------- Tvarkaraštis
+
+    private suspend fun rpc(name: String, body: String = "{}"): String =
+        execute("POST", "/rest/v1/rpc/$name", body, freshToken())
+
+    /** Visi tvarkaraščio mokytojai su pamokų skaičiumi (tik adminui). */
+    suspend fun timetableOverview(): List<TimetableTeacher> =
+        json.decodeFromString(rpc("timetable_overview"))
+
+    /** Savo pamokos pagal tvarkaraštį (mokytojo ekranui). */
+    suspend fun myTimetable(): List<TimetableLesson> =
+        json.decodeFromString(rpc("my_timetable"))
+
+    suspend fun timetableConfig(): TimetableConfig? {
+        val raw = execute(
+            "GET",
+            "/rest/v1/timetable_config?select=url,last_synced_at,last_summary&id=eq.true",
+            token = freshToken()
+        )
+        return json.decodeFromString<List<TimetableConfig>>(raw).firstOrNull()
+    }
+
+    /** Pakeičia visą tvarkaraštį naujai perskaitytu iš Google Sheets. */
+    suspend fun syncTimetable(
+        url: String,
+        teachers: List<TimetableSyncTeacher>,
+        lessons: List<TimetableSyncLesson>
+    ): TimetableSyncResult {
+        val body = json.encodeToString(TimetableSyncRequest(url, teachers, lessons))
+        return json.decodeFromString(rpc("replace_timetable", body))
+    }
+
+    suspend fun assignTimetableProfile(teacherRowId: String, profileId: String?): Boolean {
+        val body = jsonWithNulls.encodeToString(TimetableAssignRequest(teacherRowId, profileId))
+        return json.decodeFromString(rpc("assign_timetable_profile", body))
+    }
+
+    /** Priskiria mokytojams klases pagal jų tvarkaraštį. Grąžina naujų priskyrimų skaičių. */
+    suspend fun applyTimetableClasses(): Int =
+        json.decodeFromString(rpc("apply_timetable_classes"))
 }

@@ -85,6 +85,10 @@ fun AdminScreen(
     onResetLessonTimes: (String) -> Unit,
     onLoadTeacherLessonTimes: (String) -> Unit,
     onSaveSheetsConfig: (Boolean, String, String, Boolean) -> Unit,
+    onRefetchTimetable: (String) -> Unit,
+    onAssignTimetableAccount: (String, String?) -> Unit,
+    onMatchTimetableAccounts: () -> Unit,
+    onApplyTimetableClasses: () -> Unit,
     onDebugCreateAccount: (String, String, String, Boolean, Int) -> Unit,
     onDebugSeedRatings: (String, Int) -> Unit,
     onDebugDeleteAllRatings: () -> Unit,
@@ -97,7 +101,10 @@ fun AdminScreen(
     onDeleteFeedback: (String) -> Unit = {}
 ) {
     var tab by remember { mutableIntStateOf(0) }
-    val titles = listOf("Mokytojai", "Kvietimai", "Klasės", "Laikai", "Sheets", "Statistika", "Atsiliepimai", "Debug")
+    val titles = listOf(
+        "Mokytojai", "Kvietimai", "Klasės", "Laikai", "Tvarkaraštis",
+        "Sheets", "Statistika", "Atsiliepimai", "Debug"
+    )
 
     Scaffold(
         topBar = {
@@ -171,14 +178,22 @@ fun AdminScreen(
                     onLoadTeacherLessonTimes = onLoadTeacherLessonTimes
                 )
 
-                4 -> GoogleSheetsTab(
+                4 -> TimetableTab(
+                    state = state,
+                    onRefetch = onRefetchTimetable,
+                    onAssign = onAssignTimetableAccount,
+                    onMatch = onMatchTimetableAccounts,
+                    onApply = onApplyTimetableClasses
+                )
+
+                5 -> GoogleSheetsTab(
                     state = state,
                     onSave = onSaveSheetsConfig
                 )
 
-                5 -> StatsTab(state.allRatings)
+                6 -> StatsTab(state.allRatings)
 
-                6 -> FeedbackTab(
+                7 -> FeedbackTab(
                     feedback = state.feedback,
                     onMarkRead = onMarkFeedbackRead,
                     onDelete = onDeleteFeedback

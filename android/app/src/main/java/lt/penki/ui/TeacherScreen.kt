@@ -63,6 +63,8 @@ fun TeacherScreen(
 ) {
     val today = LocalDate.now().toString()
     val todaysRatings = state.myRatings.filter { it.rated_on == today }
+    val todayWeekday = LocalDate.now().dayOfWeek.value
+    val plannedToday = state.myTimetable.filter { it.weekday == todayWeekday }
 
     Scaffold(
         topBar = {
@@ -138,8 +140,13 @@ fun TeacherScreen(
 
             items(Lessons.numbers.toList()) { lessonNo ->
                 val rated = todaysRatings.filter { it.lesson_no == lessonNo }
+                val planned = plannedToday
+                    .filter { it.lesson_no == lessonNo }
+                    .map { it.class_name }
+                    .distinct()
                 LessonRow(
                     lessonNo = lessonNo,
+                    planned = planned,
                     rated = rated,
                     onRate = { onRate(lessonNo) }
                 )
@@ -168,7 +175,12 @@ fun TeacherScreen(
 }
 
 @Composable
-private fun LessonRow(lessonNo: Int, rated: List<Rating>, onRate: () -> Unit) {
+private fun LessonRow(
+    lessonNo: Int,
+    planned: List<String>,
+    rated: List<Rating>,
+    onRate: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -185,6 +197,13 @@ private fun LessonRow(lessonNo: Int, rated: List<Rating>, onRate: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (planned.isNotEmpty()) {
+                    Text(
+                        "Tvarkaraštis: " + planned.joinToString(", "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
                 if (rated.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -250,6 +269,7 @@ private fun RatingRow(rating: Rating) {
 @Composable
 fun RatingDialog(
     initialLesson: Int,
+    initialClass: String? = null,
     classes: List<Klass>,
     busy: Boolean,
     onDismiss: () -> Unit,
@@ -262,9 +282,10 @@ fun RatingDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var classMenuOpen by remember { mutableStateOf(false) }
 
-    LaunchedEffect(classes) {
+    LaunchedEffect(classes, initialClass) {
         if (classId.isBlank()) {
-            classId = classes.firstOrNull()?.id.orEmpty()
+            classId = classes.firstOrNull { it.name.equals(initialClass?.trim(), ignoreCase = true) }?.id
+                ?: classes.firstOrNull()?.id.orEmpty()
         }
     }
 

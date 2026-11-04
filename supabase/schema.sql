@@ -240,3 +240,53 @@ revoke all on public.google_sheets_exports from anon, authenticated;
 grant all on public.google_sheets_exports to service_role;
 grant select on public.profiles, public.classes to service_role;
 grant select, insert, update on public.ratings to service_role;
+
+-- ---------- TVARKARAŠTIS IŠ GOOGLE SHEETS ----------
+-- Admino skirtukas „Tvarkaraštis“ nuskaito paskelbtą lentelę ir ja pakeičia
+-- mokytojus, pamokas bei klases. Detali migracija: .dev/penki_timetable_migration.sql
+create table if not exists public.timetable_teachers (
+    id uuid primary key default gen_random_uuid(),
+    name text not null unique,
+    subject text not null default '',
+    homeroom text not null default '',
+    room text not null default '',
+    profile_id uuid references public.profiles(id) on delete set null,
+    updated_at timestamptz not null default now()
+);
+create table if not exists public.timetable_lessons (
+    id uuid primary key default gen_random_uuid(),
+    teacher_id uuid not null references public.timetable_teachers(id) on delete cascade,
+    weekday int not null check (weekday between 1 and 5),
+    lesson_no int not null check (lesson_no between 1 and 10),
+    class_name text not null default '',
+    room text not null default '',
+    created_at timestamptz not null default now(),
+    unique (teacher_id, weekday, lesson_no, class_name)
+);
+create index if not exists timetable_lessons_teacher_idx on public.timetable_lessons(teacher_id);
+create table if not exists public.timetable_config (
+    id boolean primary key default true check (id),
+    url text not null default '',
+    last_synced_at timestamptz,
+    last_summary text not null default '',
+    updated_at timestamptz not null default now()
+);
+insert into public.timetable_config(id) values (true) on conflict (id) do nothing;
+
+alter table public.timetable_teachers enable row level security;
+alter table public.timetable_lessons enable row level security;
+alter table public.timetable_config enable row level security;
+create policy timetable_teachers_select on public.timetable_teachers for select to authenticated
+using (public.is_admin() or profile_id = auth.uid());
+create policy timetable_teachers_admin_write on public.timetable_teachers for all to authenticated
+using (public.is_admin()) with check (public.is_admin());
+create policy timetable_lessons_select on public.timetable_lessons for select to authenticated
+using (public.is_admin() or exists (
+    select 1 from public.timetable_teachers t where t.id = teacher_id and t.profile_id = auth.uid()
+));
+create policy timetable_lessons_admin_write on public.timetable_lessons for all to authenticated
+using (public.is_admin()) with check (public.is_admin());
+create policy timetable_config_admin on public.timetable_config for all to authenticated
+using (public.is_admin()) with check (public.is_admin());
+grant select, insert, update, delete on public.timetable_teachers, public.timetable_lessons to authenticated;
+grant select, insert, update on public.timetable_config to authenticated;

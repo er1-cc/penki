@@ -1,5 +1,5 @@
 {
-  "version": "1.5",
-  "apk": "artifacts/penki-1.5.apk",
-  "notes": "Individualūs mokytojų tvarkaraščiai ir Google Sheets eksportas."
+  "version": "1.6",
+  "apk": "artifacts/penki-1.6.apk",
+  "notes": "Admino tvarkaraštis: „Atsiųsti iš naujo“ nuskaito Google Sheets lentelę, sukuria mokytojus, pamokas ir klases bei leidžia priskirti paskyras."
 }

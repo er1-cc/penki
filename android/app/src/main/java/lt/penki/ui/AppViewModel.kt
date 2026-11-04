@@ -23,6 +23,10 @@ import lt.penki.data.Profile
 import lt.penki.data.Rating
 import lt.penki.data.Supabase
 import lt.penki.data.TeacherClass
+import lt.penki.data.TimetableConfig
+import lt.penki.data.TimetableLesson
+import lt.penki.data.TimetableParser
+import lt.penki.data.TimetableTeacher
 import lt.penki.data.UpdateManifest
 import lt.penki.data.Updater
 import lt.penki.notify.Notifications
@@ -55,6 +59,9 @@ data class UiState(
     val assignments: List<TeacherClass> = emptyList(),
     val lessonTimes: List<LessonTime> = emptyList(),
     val sheetsConfig: GoogleSheetsConfig? = null,
+    val ttTeachers: List<TimetableTeacher> = emptyList(),
+    val ttConfig: TimetableConfig? = null,
+    val myTimetable: List<TimetableLesson> = emptyList(),
     val allRatings: List<Rating> = emptyList(),
     val feedback: List<Feedback> = emptyList(),
     val debugLog: List<String> = emptyList(),
@@ -215,6 +222,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val classes = api.classes()
                 val mine = api.myRatings()
+                val timetable = runCatching { api.myTimetable() }.getOrDefault(emptyList())
                 val visible = if (profile.isAdmin) classes else {
                     val assigned = runCatching { api.myTeacherClasses() }.getOrDefault(emptyList())
                     if (assigned.isEmpty()) classes else classes.filter { klass -> assigned.any { it.class_id == klass.id } }
@@ -229,6 +237,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         profile = profile,
                         classes = visible,
                         myRatings = mine,
+                        myTimetable = timetable,
                         screen = Screen.Home
                     )
                 }
@@ -247,13 +256,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val classes = api.classes()
                 val mine = api.myRatings()
+                val timetable = runCatching { api.myTimetable() }.getOrDefault(_state.value.myTimetable)
                 val profile = _state.value.profile
                 val visible = if (profile == null || profile.isAdmin) classes else {
                     val assigned = runCatching { api.myTeacherClasses() }.getOrDefault(emptyList())
                     if (assigned.isEmpty()) classes else classes.filter { klass -> assigned.any { it.class_id == klass.id } }
                 }
                 profile?.id?.let { loadLessonTimes(it) }
-                _state.update { it.copy(busy = false, classes = visible, myRatings = mine) }
+                _state.update {
+                    it.copy(busy = false, classes = visible, myRatings = mine, myTimetable = timetable)
+                }
                 if (_state.value.isAdmin) loadAdminData()
             } catch (e: Exception) {
                 handle(e)
@@ -371,6 +383,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val assignments = api.allTeacherClasses()
         val feedback = runCatching { api.feedback() }.getOrDefault(emptyList())
         val sheetsConfig = runCatching { api.googleSheetsConfig().firstOrNull() }.getOrNull()
+        val ttTeachers = runCatching { api.timetableOverview() }.getOrDefault(_state.value.ttTeachers)
+        val ttConfig = runCatching { api.timetableConfig() }.getOrNull() ?: _state.value.ttConfig
         _state.update {
             it.copy(
                 teachers = teachers,
@@ -378,7 +392,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 allRatings = ratings,
                 sheetsConfig = sheetsConfig,
                 assignments = assignments,
-                feedback = feedback
+                feedback = feedback,
+                ttTeachers = ttTeachers,
+                ttConfig = ttConfig
             )
         }
     }
@@ -675,6 +691,125 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 handle(e)
             }
         }
+    }
+
+    // ------------------------------------------------------------ tvarkaraštis
+
+    /**
+     * Atsisiunčia paskelbtą Google Sheets tvarkaraštį ir juo pakeičia mokytojus,
+     * pamokas bei klases serveryje. Paskyrų priskyrimai išlieka pagal mokytojo vardą.
+     */
+    fun refetchTimetable(url: String) {
+        if (!_state.value.isAdmin) return notice("Šį veiksmą gali atlikti tik administratorius.", true)
+        val target = TimetableParser.normalizeUrl(url)
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, notice = null) }
+            try {
+                val csv = TimetableParser.download(target)
+                val parsed = TimetableParser.parse(csv)
+                val result = api.syncTimetable(target, parsed.teachers, parsed.lessons)
+                val teachers = runCatching { api.timetableOverview() }.getOrDefault(_state.value.ttTeachers)
+                val config = runCatching { api.timetableConfig() }.getOrNull()
+                val classes = runCatching { api.classes() }.getOrDefault(_state.value.classes)
+                val mine = runCatching { api.myTimetable() }.getOrDefault(_state.value.myTimetable)
+                logDebug("Tvarkaraštis: ${result.teachers} mokytojų, ${result.lessons} pamokų")
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        ttTeachers = teachers,
+                        ttConfig = config,
+                        classes = classes,
+                        myTimetable = mine,
+                        notice = "Tvarkaraštis atsiųstas: ${result.teachers} mokytojų, " +
+                            "${result.lessons} pamokų, ${result.classes} klasių.",
+                        noticeIsError = false
+                    )
+                }
+            } catch (e: Exception) {
+                handle(e)
+            }
+        }
+    }
+
+    /** Priskiria tvarkaraščio mokytoją konkrečiai paskyrai (arba atšaukia priskyrimą). */
+    fun assignTimetableAccount(teacherRowId: String, profileId: String?) {
+        if (!_state.value.isAdmin) return
+        viewModelScope.launch {
+            try {
+                api.assignTimetableProfile(teacherRowId, profileId?.takeIf { it.isNotBlank() })
+                val teachers = api.timetableOverview()
+                _state.update { it.copy(ttTeachers = teachers) }
+            } catch (e: Exception) {
+                handle(e)
+            }
+        }
+    }
+
+    /** Susieja tvarkaraščio mokytojus su paskyromis pagal vardo ir pavardės sutapimą. */
+    fun matchTimetableAccounts() {
+        if (!_state.value.isAdmin) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, notice = null) }
+            try {
+                val profiles = _state.value.teachers.filter { it.isTeacher }
+                val teachers = _state.value.ttTeachers
+                var matched = 0
+                teachers.forEach { teacher ->
+                    if (teacher.hasAccount) return@forEach
+                    val profile = profiles.firstOrNull { samePerson(it.full_name, teacher.name) } ?: return@forEach
+                    runCatching { api.assignTimetableProfile(teacher.id, profile.id) }
+                        .onSuccess { if (it) matched++ }
+                }
+                val updated = runCatching { api.timetableOverview() }.getOrDefault(teachers)
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        ttTeachers = updated,
+                        notice = if (matched == 0) {
+                            "Pagal vardą naujų atitikmenų nerasta – priskirkite paskyras rankiniu būdu."
+                        } else {
+                            "Pagal vardą priskirta paskyrų: $matched."
+                        },
+                        noticeIsError = matched == 0
+                    )
+                }
+            } catch (e: Exception) {
+                handle(e)
+            }
+        }
+    }
+
+    /** Priskiria mokytojams klases pagal jų tvarkaraštį. */
+    fun applyTimetableClasses() {
+        if (!_state.value.isAdmin) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, notice = null) }
+            try {
+                val added = api.applyTimetableClasses()
+                val assignments = api.allTeacherClasses()
+                val classes = api.classes()
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        assignments = assignments,
+                        classes = classes,
+                        notice = if (added == 0) "Visos klasės jau priskirtos." else "Priskirta klasių: $added.",
+                        noticeIsError = false
+                    )
+                }
+            } catch (e: Exception) {
+                handle(e)
+            }
+        }
+    }
+
+    private fun samePerson(profileName: String, sheetName: String): Boolean {
+        fun parts(value: String) = value.trim().lowercase()
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+            .sorted()
+        val left = parts(profileName)
+        return left.isNotEmpty() && left == parts(sheetName)
     }
 
     // ------------------------------------------------------------ debug (adminui)

@@ -177,3 +177,72 @@ data class SheetsAppendResult(
     val skipped: Boolean = false,
     val error: String? = null
 )
+
+/** Tvarkaraščio mokytojas serveryje (importuotas iš Google Sheets). */
+@Serializable
+data class TimetableTeacher(
+    val id: String = "",
+    val name: String = "",
+    val subject: String = "",
+    val homeroom: String = "",
+    val room: String = "",
+    val profile_id: String? = null,
+    val lesson_count: Long = 0,
+    val class_names: String = ""
+) {
+    val hasAccount: Boolean get() = !profile_id.isNullOrBlank()
+}
+
+/** Viena mokytojo pamoka konkrečią savaitės dieną. */
+@Serializable
+data class TimetableLesson(
+    val weekday: Int = 1,
+    val lesson_no: Int = 1,
+    val class_name: String = "",
+    val room: String = "",
+    val teacher_name: String = ""
+)
+
+@Serializable
+data class TimetableSyncTeacher(
+    val name: String,
+    val subject: String = "",
+    val homeroom: String = "",
+    val room: String = ""
+)
+
+@Serializable
+data class TimetableSyncLesson(
+    val teacher: String,
+    val weekday: Int,
+    val lesson_no: Int,
+    val class_name: String,
+    val room: String = ""
+)
+
+@Serializable
+data class TimetableSyncRequest(
+    val p_url: String,
+    val p_teachers: List<TimetableSyncTeacher>,
+    val p_lessons: List<TimetableSyncLesson>
+)
+
+@Serializable
+data class TimetableSyncResult(
+    val teachers: Int = 0,
+    val lessons: Int = 0,
+    val classes: Int = 0
+)
+
+@Serializable
+data class TimetableAssignRequest(
+    val p_teacher: String,
+    val p_profile: String? = null
+)
+
+@Serializable
+data class TimetableConfig(
+    val url: String = "",
+    val last_synced_at: String? = null,
+    val last_summary: String = ""
+)
