@@ -711,11 +711,25 @@ private fun StatsTab(ratings: List<Rating>) {
     // 7 dienos, įskaitant šiandieną (>= today-6), o ne 8 dienos.
     val weekAgo = today.minusDays(6)
 
-    val lastWeek = ratings.filter { rating ->
-        rating.rated_on?.let {
-            runCatching { LocalDate.parse(it.take(10)) >= weekAgo }.getOrDefault(false)
-        } ?: false
+    val lastWeek = remember(ratings) {
+        ratings.filter { rating ->
+            rating.rated_on?.let {
+                runCatching { LocalDate.parse(it.take(10)) >= weekAgo }.getOrDefault(false)
+            } ?: false
+        }
     }
+    // Grupavimas atliekamas kartą, o ne kiekvieno perpiešimo metu.
+    val byClass = remember(ratings) {
+        ratings.groupBy { it.className }
+            .map { (name, list) -> name to list }
+            .sortedByDescending { it.second.size }
+    }
+    val byTeacher = remember(ratings) {
+        ratings.groupBy { it.teacherName }
+            .map { (name, list) -> name to list }
+            .sortedByDescending { it.second.size }
+    }
+    val comments = remember(ratings) { ratings.filter { it.comment.isNotBlank() }.take(25) }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
@@ -740,9 +754,6 @@ private fun StatsTab(ratings: List<Rating>) {
         }
 
         item { SectionTitle("Pagal klases") }
-        val byClass = ratings.groupBy { it.className }
-            .map { (name, list) -> name to list }
-            .sortedByDescending { it.second.size }
         if (byClass.isEmpty()) {
             item {
                 Text(
@@ -762,9 +773,6 @@ private fun StatsTab(ratings: List<Rating>) {
         }
 
         item { SectionTitle("Pagal mokytojus") }
-        val byTeacher = ratings.groupBy { it.teacherName }
-            .map { (name, list) -> name to list }
-            .sortedByDescending { it.second.size }
         items(byTeacher) { entry ->
             StatsRow(
                 title = entry.first,
@@ -774,7 +782,6 @@ private fun StatsTab(ratings: List<Rating>) {
         }
 
         item { SectionTitle("Naujausi komentarai") }
-        val comments = ratings.filter { it.comment.isNotBlank() }.take(25)
         if (comments.isEmpty()) {
             item {
                 Text(

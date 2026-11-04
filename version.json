@@ -1,5 +1,5 @@
 {
-  "version": "1.7",
-  "apk": "artifacts/penki-1.7.apk",
-  "notes": "Klaidų taisymai: tvarkaraščio nuorodos atstatymas, apsauga nuo tuščio importo ir aiškesnė klaida, kai nuoroda nepaskelbta."
+  "version": "1.8",
+  "apk": "artifacts/penki-1.8.apk",
+  "notes": "Naujas dizainas: smėlio ir tamsiai miško spalvos, stiklo (frosted glass) paviršiai ir modernus vertinimo langas."
 }

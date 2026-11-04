@@ -62,7 +62,7 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    PenkiBackground {
         when (state.screen) {
             Screen.Setup -> SetupScreen(
                 busy = state.busy,
@@ -112,7 +112,15 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
 
             Screen.Admin -> AdminScreen(
                 state = state,
-                diagnostics = viewModel.diagnostics(),
+                diagnostics = remember(
+                    state.profile?.id,
+                    state.profile?.role,
+                    state.teachers.size,
+                    state.classes.size,
+                    state.invites.size,
+                    state.allRatings.size,
+                    state.lessonTimes
+                ) { viewModel.diagnostics() },
                 onBack = viewModel::goHome,
                 onRefresh = viewModel::refreshAdmin,
                 onDismissNotice = viewModel::dismissNotice,
@@ -192,6 +200,10 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                     it.weekday == java.time.LocalDate.now().dayOfWeek.value && it.lesson_no == lesson
                 }
                 ?.class_name,
+            plannedClasses = state.myTimetable
+                .filter { it.weekday == java.time.LocalDate.now().dayOfWeek.value }
+                .groupBy { it.lesson_no }
+                .mapValues { (_, lessons) -> lessons.first().class_name },
             classes = state.classes,
             busy = state.busy,
             onDismiss = { ratingLesson = null },

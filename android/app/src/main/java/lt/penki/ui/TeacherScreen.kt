@@ -1,34 +1,43 @@
 package lt.penki.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,9 +52,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import lt.penki.data.Klass
 import lt.penki.data.Lessons
 import lt.penki.data.Rating
@@ -61,12 +75,26 @@ fun TeacherScreen(
     onRefresh: () -> Unit,
     onDismissNotice: () -> Unit
 ) {
-    val today = LocalDate.now().toString()
-    val todaysRatings = state.myRatings.filter { it.rated_on == today }
-    val todayWeekday = LocalDate.now().dayOfWeek.value
-    val plannedToday = state.myTimetable.filter { it.weekday == todayWeekday }
+    val todayDate = remember { LocalDate.now() }
+    val today = todayDate.toString()
+    val weekday = todayDate.dayOfWeek.value
+    val lessons = remember(Lessons.count) { Lessons.numbers.toList() }
+
+    // Sąrašai suskaičiuojami kartą, o ne kiekvieno perpiešimo metu.
+    val todaysRatings = remember(state.myRatings, today) {
+        state.myRatings.filter { it.rated_on == today }
+    }
+    val ratedByLesson = remember(todaysRatings) { todaysRatings.groupBy { it.lesson_no } }
+    val plannedByLesson = remember(state.myTimetable, weekday) {
+        state.myTimetable
+            .filter { it.weekday == weekday }
+            .groupBy({ it.lesson_no }, { it.class_name })
+            .mapValues { (_, names) -> names.distinct() }
+    }
+    val ratedCount = remember(todaysRatings) { todaysRatings.map { it.lesson_no }.distinct().size }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
@@ -80,10 +108,7 @@ fun TeacherScreen(
                 },
                 actions = {
                     if (state.isAdmin) {
-                        TextButton(
-                            onClick = onAdmin,
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                        ) { Text("Admin") }
+                        TextButton(onClick = onAdmin) { Text("Admin") }
                     }
                     IconButton(onClick = onRefresh) {
                         Icon(Icons.Default.Refresh, contentDescription = "Atnaujinti")
@@ -93,9 +118,9 @@ fun TeacherScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    containerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    actionIconContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         }
@@ -106,31 +131,37 @@ fun TeacherScreen(
                 .padding(padding)
         ) {
             state.notice?.let { notice ->
-                item {
-                    NoticeBanner(notice, state.noticeIsError, onDismissNotice)
-                }
+                item { NoticeBanner(notice, state.noticeIsError, onDismissNotice) }
             }
 
             item {
-                Card(
+                GlassPanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
+                    shape = RoundedCornerShape(30.dp),
+                    contentPadding = PaddingValues(20.dp)
                 ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            todayLongText().replaceFirstChar { it.uppercase() },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                    Text(
+                        todayLongText().replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Po kiekvienos pamokos įvertink klasės elgesį nuo 1 iki 5. " +
+                            "Pranešimą gausi iškart pasibaigus pamokai.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatusChip(
+                            label = "Šiandien įvertinta",
+                            value = "$ratedCount/${lessons.size}"
                         )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Po kiekvienos pamokos įvertink klasės elgesį nuo 1 iki 5. " +
-                                "Pranešimą gausi iškart pasibaigus pamokai.",
-                            style = MaterialTheme.typography.bodyMedium
+                        StatusChip(
+                            label = "Pamokų šiandien",
+                            value = plannedByLesson.keys.distinct().size.toString()
                         )
                     }
                 }
@@ -138,12 +169,9 @@ fun TeacherScreen(
 
             item { SectionTitle("Šiandienos pamokos") }
 
-            items(Lessons.numbers.toList()) { lessonNo ->
-                val rated = todaysRatings.filter { it.lesson_no == lessonNo }
-                val planned = plannedToday
-                    .filter { it.lesson_no == lessonNo }
-                    .map { it.class_name }
-                    .distinct()
+            items(lessons) { lessonNo ->
+                val rated = ratedByLesson[lessonNo].orEmpty()
+                val planned = plannedByLesson[lessonNo].orEmpty()
                 LessonRow(
                     lessonNo = lessonNo,
                     planned = planned,
@@ -159,7 +187,7 @@ fun TeacherScreen(
                     Text(
                         "Dar nėra vertinimų. Pasirink pamoką aukščiau ir įvertink klasę.",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -175,23 +203,68 @@ fun TeacherScreen(
 }
 
 @Composable
+private fun StatusChip(label: String, value: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                value,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
 private fun LessonRow(
     lessonNo: Int,
     planned: List<String>,
     rated: List<Rating>,
     onRate: () -> Unit
 ) {
-    Card(
+    GlassPanel(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 5.dp),
+        shape = RoundedCornerShape(24.dp),
+        contentPadding = PaddingValues(14.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(PenkiPalette.ForestMid, PenkiPalette.Forest)
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    lessonNo.toString(),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            }
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("$lessonNo-a pamoka", fontWeight = FontWeight.Medium)
+                Text(
+                    "$lessonNo-a pamoka",
+                    style = MaterialTheme.typography.titleSmall
+                )
                 Text(
                     "Baigiasi ${Lessons.endText(lessonNo)}",
                     style = MaterialTheme.typography.bodySmall,
@@ -206,13 +279,16 @@ private fun LessonRow(
                 }
                 if (rated.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         rated.take(3).forEach { rating ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                ScoreBadge(rating.score, size = 24.dp)
+                                ScoreBadge(rating.score, size = 22.dp)
                                 Text(
                                     rating.className,
                                     style = MaterialTheme.typography.labelSmall
@@ -222,7 +298,12 @@ private fun LessonRow(
                     }
                 }
             }
-            Button(onClick = onRate) {
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = onRate,
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+            ) {
                 Text(if (rated.isEmpty()) "Įvertinti" else "Keisti")
             }
         }
@@ -231,21 +312,21 @@ private fun LessonRow(
 
 @Composable
 private fun RatingRow(rating: Rating) {
-    Card(
+    GlassPanel(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 5.dp),
+        shape = RoundedCornerShape(22.dp),
+        contentPadding = PaddingValues(14.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ScoreBadge(rating.score)
-            Spacer(Modifier.width(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ScoreBadge(rating.score, size = 38.dp)
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     "${rating.className} · ${rating.lesson_no}-a pamoka",
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
                     formatDate(rating.rated_on),
@@ -257,6 +338,7 @@ private fun RatingRow(rating: Rating) {
                     Text(rating.comment, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            Spacer(Modifier.width(8.dp))
             Text(
                 scoreLabel(rating.score),
                 style = MaterialTheme.typography.labelSmall,
@@ -266,10 +348,17 @@ private fun RatingRow(rating: Rating) {
     }
 }
 
+/**
+ * Vertinimo langas: stiklo panelė su pamokos, klasės, balo ir komentaro
+ * pasirinkimu. Klasė pasiūloma pagal tvarkaraštį, o pakeitus pamoką –
+ * pasiūlymas atnaujinamas.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RatingDialog(
     initialLesson: Int,
     initialClass: String? = null,
+    plannedClasses: Map<Int, String> = emptyMap(),
     classes: List<Klass>,
     busy: Boolean,
     onDismiss: () -> Unit,
@@ -280,7 +369,12 @@ fun RatingDialog(
     var score by remember { mutableIntStateOf(0) }
     var comment by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    var classMenuOpen by remember { mutableStateOf(false) }
+
+    fun classForLesson(no: Int): String {
+        val planned = plannedClasses[no]?.trim().orEmpty()
+        if (planned.isBlank()) return ""
+        return classes.firstOrNull { it.name.equals(planned, ignoreCase = true) }?.id.orEmpty()
+    }
 
     LaunchedEffect(classes, initialClass) {
         if (classId.isBlank()) {
@@ -289,138 +383,264 @@ fun RatingDialog(
         }
     }
 
-    val selectedClass = classes.firstOrNull { it.id == classId }
+    // Apsauga nuo pasenusio klasės ID (pvz., klasė ištrinta serveryje).
+    val selectedClassId = remember(classId, classes) {
+        classes.firstOrNull { it.id == classId }?.id.orEmpty()
+    }
+    val selectedClass = classes.firstOrNull { it.id == selectedClassId }
+    val lessons = remember(Lessons.count) { Lessons.numbers.toList() }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Pamokos vertinimas") },
-        confirmButton = {
-            TextButton(
-                enabled = !busy,
-                onClick = {
-                    when {
-                        classId.isBlank() -> error = "Pasirinkite klasę."
-                        score !in 1..5 -> error = "Pasirinkite balą nuo 1 iki 5."
-                        else -> {
-                            error = null
-                            onSave(classId, lessonNo, score, comment)
-                        }
-                    }
-                }
-            ) { Text("Išsaugoti") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text("Atšaukti") }
-        },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Text("Pamoka", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Lessons.numbers.forEach { number ->
-                        val selected = number == lessonNo
-                        if (selected) {
-                            Button(
-                                onClick = { lessonNo = number },
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                                modifier = Modifier.weight(1f)
-                            ) { Text("$number") }
-                        } else {
-                            OutlinedButton(
-                                onClick = { lessonNo = number },
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                                modifier = Modifier.weight(1f)
-                            ) { Text("$number") }
-                        }
-                    }
-                }
-                Text(
-                    "Baigiasi ${Lessons.endText(lessonNo)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(Modifier.height(16.dp))
-                Text("Klasė", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.height(6.dp))
-
-                if (classes.isEmpty()) {
-                    Text(
-                        "Nėra klasių. Paprašyk administratorių pridėti klasių.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
+    Dialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.40f))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { if (!busy) onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            GlassPanel(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp)
+                    .heightIn(max = 640.dp)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { },
+                shape = RoundedCornerShape(32.dp),
+                contentPadding = PaddingValues(22.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .width(46.dp)
+                            .height(4.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
                     )
-                } else {
-                    Box {
-                        OutlinedButton(
-                            onClick = { classMenuOpen = true },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(selectedClass?.let { "Klasė: ${it.name}" } ?: "Pasirinkite klasę")
+                    Spacer(Modifier.height(18.dp))
+                    Text(
+                        "Pamokos vertinimas",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        buildString {
+                            append("$lessonNo-a pamoka")
+                            selectedClass?.let { append(" · ${it.name}") }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(18.dp))
+                    Text("Pamoka", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        lessons.forEach { number ->
+                            val selected = number == lessonNo
+                            PillButton(
+                                text = number.toString(),
+                                selected = selected,
+                                onClick = {
+                                    lessonNo = number
+                                    val planned = classForLesson(number)
+                                    if (planned.isNotBlank()) classId = planned
+                                }
+                            )
                         }
-                        DropdownMenu(
-                            expanded = classMenuOpen,
-                            onDismissRequest = { classMenuOpen = false }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Baigiasi ${Lessons.endText(lessonNo)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(18.dp))
+                    Text("Klasė", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(8.dp))
+
+                    if (classes.isEmpty()) {
+                        Text(
+                            "Nėra klasių. Paprašyk administratorių pridėti klasių.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             classes.forEach { klass ->
-                                DropdownMenuItem(
-                                    text = { Text(klass.name) },
-                                    onClick = {
-                                        classId = klass.id
-                                        classMenuOpen = false
-                                    }
+                                val selected = klass.id == selectedClassId
+                                PillButton(
+                                    text = klass.name,
+                                    selected = selected,
+                                    onClick = { classId = klass.id }
                                 )
                             }
                         }
                     }
-                }
 
-                Spacer(Modifier.height(16.dp))
-                Text("Klasės elgesys", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    (1..5).forEach { value ->
-                        val selected = value == score
-                        if (selected) {
-                            Button(
-                                onClick = { score = value },
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = scoreColor(value)),
-                                modifier = Modifier.weight(1f)
-                            ) { Text("$value") }
-                        } else {
-                            OutlinedButton(
-                                onClick = { score = value },
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                                modifier = Modifier.weight(1f)
-                            ) { Text("$value") }
+                    Spacer(Modifier.height(18.dp))
+                    Text("Klasės elgesys", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        (1..5).forEach { value ->
+                            val selected = value == score
+                            val base = scoreColor(value)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (selected) {
+                                            Brush.linearGradient(listOf(base, base.copy(alpha = 0.72f)))
+                                        } else {
+                                            Brush.linearGradient(
+                                                listOf(
+                                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+                                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)
+                                                )
+                                            )
+                                        }
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (selected) Color.Transparent
+                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { score = value },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    value.toString(),
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    when {
-                        score == 0 -> "1 – labai blogas, 5 – labai geras"
-                        else -> "$score – ${scoreLabel(score)}"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (score == 0) MaterialTheme.colorScheme.onSurfaceVariant else scoreColor(score)
-                )
-
-                Spacer(Modifier.height(16.dp))
-                PenkiTextField(
-                    value = comment,
-                    onValueChange = { if (it.length <= 300) comment = it },
-                    label = "Komentaras (neprivalomas)",
-                    singleLine = false,
-                    minLines = 2
-                )
-
-                if (error != null) {
                     Spacer(Modifier.height(8.dp))
-                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        when {
+                            score == 0 -> "1 – labai blogas, 5 – labai geras"
+                            else -> "$score – ${scoreLabel(score)}"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (score == 0) MaterialTheme.colorScheme.onSurfaceVariant else scoreColor(score),
+                        fontWeight = if (score == 0) FontWeight.Normal else FontWeight.Medium
+                    )
+
+                    Spacer(Modifier.height(18.dp))
+                    OutlinedTextField(
+                        value = comment,
+                        onValueChange = { if (it.length <= 300) comment = it },
+                        label = { Text("Komentaras (neprivalomas)") },
+                        minLines = 2,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.35f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.30f)
+                        )
+                    )
+
+                    if (error != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            error.orEmpty(),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TextButton(
+                            onClick = onDismiss,
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Atšaukti") }
+
+                        Button(
+                            enabled = !busy,
+                            onClick = {
+                                when {
+                                    selectedClassId.isBlank() -> error = "Pasirinkite klasę."
+                                    score !in 1..5 -> error = "Pasirinkite balą nuo 1 iki 5."
+                                    else -> {
+                                        error = null
+                                        onSave(selectedClassId, lessonNo, score, comment)
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(18.dp),
+                            contentPadding = PaddingValues(vertical = 14.dp),
+                            modifier = Modifier.weight(2f)
+                        ) { Text("Išsaugoti vertinimą", fontWeight = FontWeight.SemiBold) }
+                    }
                 }
             }
         }
-    )
+    }
+}
+
+@Composable
+private fun PillButton(text: String, selected: Boolean, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (selected) {
+                    Brush.linearGradient(listOf(PenkiPalette.ForestMid, PenkiPalette.Forest))
+                } else {
+                    Brush.linearGradient(
+                        listOf(
+                            scheme.surface.copy(alpha = 0.70f),
+                            scheme.surface.copy(alpha = 0.45f)
+                        )
+                    )
+                }
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) Color.Transparent else scheme.outline.copy(alpha = 0.40f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            color = if (selected) Color.White else scheme.onSurface,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            style = MaterialTheme.typography.labelLarge
+        )
+    }
 }
