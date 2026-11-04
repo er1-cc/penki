@@ -67,7 +67,7 @@ internal fun GoogleSheetsTab(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Card(modifier = Modifier.fillMaxWidth()) {
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Įjungti eksportą", modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)

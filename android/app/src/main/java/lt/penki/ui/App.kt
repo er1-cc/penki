@@ -1,10 +1,12 @@
 package lt.penki.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,24 +14,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,16 +39,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import lt.penki.data.Lessons
 
 @Composable
 fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Unit) {
@@ -173,11 +176,19 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x55000000))
+                    .background(Color.Black.copy(alpha = 0.16f))
                     .clickable(enabled = true) { },
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = Color.White)
+                GlassPanel(
+                    shape = RoundedCornerShape(26.dp),
+                    contentPadding = PaddingValues(26.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp
+                    )
+                }
             }
         }
 
@@ -220,8 +231,8 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
 // ------------------------------------------------------------ NAUJINIMAS
 
 /**
- * Neintrusyvus naujinio pranešimas viršuje. Nieko neužblokuoja ir
- * savaime išnyksta po 10 sekundžių, jei vartotojas nieko nepasirenka.
+ * Neintrusyvus naujinio pranešimas viršuje: stiklo kortelė su gradientiniu
+ * ženkliuku. Nieko neužblokuoja ir savaime išnyksta po 10 sekundžių.
  */
 @Composable
 private fun UpdateBanner(
@@ -230,8 +241,6 @@ private fun UpdateBanner(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Tik tuščią (nieko nevykstančią) būseną automatiškai uždarome.
-    // Kol atsisiunčiama arba failas paruoštas – pranešimas lieka.
     val idle = !info.downloading && info.file == null
     LaunchedEffect(info.version, idle) {
         if (idle) {
@@ -240,56 +249,75 @@ private fun UpdateBanner(
         }
     }
 
-    Surface(
+    GlassPanel(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        shadowElevation = 6.dp
+        shape = RoundedCornerShape(26.dp),
+        contentPadding = PaddingValues(16.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(start = 14.dp, top = 10.dp, end = 4.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(ForestGradient),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "↑",
+                    color = PenkiPalette.Cream,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (info.file != null) "Naujinys paruoštas" else "Yra nauja versija ${info.version}",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    text = if (info.file != null) "Naujinys paruoštas" else "Nauja versija ${info.version}",
+                    style = MaterialTheme.typography.titleSmall
                 )
                 if (info.notes.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = info.notes,
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (info.downloading) {
-                    Spacer(Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { info.progress / 100f },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = "Atsisiunčiama… ${info.progress}%",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
             }
-            Spacer(Modifier.width(8.dp))
-            Button(onClick = onAction, enabled = !info.downloading) {
-                Text(if (info.file != null) "Įdiegti" else "Atnaujinti")
-            }
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Slėpti naujinio pranešimą"
-                )
-            }
+            SoftIconButton(
+                icon = Icons.Default.Close,
+                contentDescription = "Slėpti naujinio pranešimą",
+                onClick = onDismiss
+            )
         }
+
+        if (info.downloading) {
+            Spacer(modifier = Modifier.height(10.dp))
+            LinearProgressIndicator(
+                progress = { info.progress / 100f },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Atsisiunčiama… ${info.progress}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        ForestButton(
+            text = when {
+                info.downloading -> "Atsisiunčiama…"
+                info.file != null -> "Įdiegti atnaujinimą"
+                else -> "Atnaujinti dabar"
+            },
+            onClick = onAction,
+            enabled = !info.downloading,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -306,34 +334,30 @@ private fun SetupScreen(
     var url by remember { mutableStateOf("") }
     var key by remember { mutableStateOf("") }
 
-    Scaffold { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(24.dp)
-        ) {
-            BrandHeader(subtitle = "Pirmas paleidimas")
-            Spacer(Modifier.height(24.dp))
-            Text(
-                "Įveskite savo Supabase projekto duomenis. Juos rasite Supabase → Settings → API.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(Modifier.height(16.dp))
-            PenkiTextField(url, { url = it }, "Projekto URL (https://...supabase.co)")
-            Spacer(Modifier.height(12.dp))
-            PenkiTextField(key, { key = it }, "anon / public raktas")
-            Spacer(Modifier.height(20.dp))
-            Button(
-                onClick = { onSave(url, key) },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Išsaugoti") }
-            Spacer(Modifier.height(16.dp))
-            Notice(notice, noticeIsError, onDismissNotice)
-        }
+    AuthShell(
+        subtitle = "Pirmas paleidimas",
+        notice = notice,
+        noticeIsError = noticeIsError,
+        onDismissNotice = onDismissNotice
+    ) {
+        Text("Serverio nustatymas", style = MaterialTheme.typography.headlineSmall)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            "Įveskite Supabase projekto duomenis. Juos rasite Supabase → Settings → API.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(18.dp))
+        PenkiTextField(url, { url = it }, "Projekto URL (https://…supabase.co)")
+        Spacer(modifier = Modifier.height(10.dp))
+        PenkiTextField(key, { key = it }, "anon / public raktas")
+        Spacer(modifier = Modifier.height(18.dp))
+        ForestButton(
+            text = "Išsaugoti ir tęsti",
+            onClick = { onSave(url, key) },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -351,41 +375,43 @@ private fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
-    Scaffold { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(24.dp)
-        ) {
-            Spacer(Modifier.height(40.dp))
-            BrandHeader(subtitle = "Klasės elgesio vertinimas po pamokos")
-            Spacer(Modifier.height(32.dp))
-            PenkiTextField(email, { email = it }, "El. paštas", KeyboardType.Email)
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Slaptažodis") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = { onSignIn(email, password) },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Prisijungti") }
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onRegister, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                Text("Neturite paskyros? Registruotis su kvietimo kodu")
-            }
-            Spacer(Modifier.height(12.dp))
-            Notice(notice, noticeIsError, onDismissNotice)
-        }
+    AuthShell(
+        subtitle = "Klasės elgesio vertinimas po pamokos",
+        notice = notice,
+        noticeIsError = noticeIsError,
+        onDismissNotice = onDismissNotice
+    ) {
+        Text("Sveiki atgal", style = MaterialTheme.typography.headlineSmall)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "Prisijunkite su mokyklos suteikta paskyra.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(18.dp))
+        PenkiTextField(email, { email = it }, "El. paštas", KeyboardType.Email)
+        Spacer(modifier = Modifier.height(10.dp))
+        PenkiTextField(
+            password,
+            { password = it },
+            "Slaptažodis",
+            KeyboardType.Password,
+            visualTransformation = PasswordVisualTransformation()
+        )
+        Spacer(modifier = Modifier.height(18.dp))
+        ForestButton(
+            text = "Prisijungti",
+            onClick = { onSignIn(email, password) },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        GhostButton(
+            text = "Registruotis su kvietimo kodu",
+            onClick = onRegister,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -405,50 +431,47 @@ private fun RegisterScreen(
     var password by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
 
-    Scaffold { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(24.dp)
-        ) {
-            Spacer(Modifier.height(24.dp))
-            Text("Registracija", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Mokytoją gali pakviesti tik administratorius. Įveskite savo duomenis ir gautą kvietimo kodą.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(Modifier.height(20.dp))
-            PenkiTextField(name, { name = it }, "Vardas ir pavardė")
-            Spacer(Modifier.height(12.dp))
-            PenkiTextField(email, { email = it }, "El. paštas", KeyboardType.Email)
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Slaptažodis (bent 6 simboliai)") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(12.dp))
-            PenkiTextField(code, { code = it.uppercase() }, "Kvietimo kodas")
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = { onRegister(name, email, password, code) },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Sukurti paskyrą") }
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onBack, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                Text("Atgal į prisijungimą")
-            }
-            Spacer(Modifier.height(12.dp))
-            Notice(notice, noticeIsError, onDismissNotice)
-        }
+    AuthShell(
+        subtitle = "Nauja mokytojo paskyra",
+        notice = notice,
+        noticeIsError = noticeIsError,
+        onDismissNotice = onDismissNotice
+    ) {
+        Text("Registracija", style = MaterialTheme.typography.headlineSmall)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "Mokytoją gali pakviesti tik administratorius. Įveskite savo duomenis ir gautą kvietimo kodą.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(18.dp))
+        PenkiTextField(name, { name = it }, "Vardas ir pavardė")
+        Spacer(modifier = Modifier.height(10.dp))
+        PenkiTextField(email, { email = it }, "El. paštas", KeyboardType.Email)
+        Spacer(modifier = Modifier.height(10.dp))
+        PenkiTextField(
+            password,
+            { password = it },
+            "Slaptažodis (bent 6 simboliai)",
+            KeyboardType.Password,
+            visualTransformation = PasswordVisualTransformation()
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        PenkiTextField(code, { code = it.uppercase() }, "Kvietimo kodas")
+        Spacer(modifier = Modifier.height(18.dp))
+        ForestButton(
+            text = "Sukurti paskyrą",
+            onClick = { onRegister(name, email, password, code) },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        GhostButton(
+            text = "Atgal į prisijungimą",
+            onClick = onBack,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -467,64 +490,131 @@ private fun ActivationScreen(
 ) {
     var code by remember { mutableStateOf("") }
 
-    Scaffold { padding ->
+    AuthShell(
+        subtitle = "Paskyros aktyvavimas",
+        notice = notice,
+        noticeIsError = noticeIsError,
+        onDismissNotice = onDismissNotice
+    ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(24.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(40.dp))
-            Text("penki", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(16.dp))
+            BrandMark(size = 60.dp)
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 "Paskyra dar neaktyvi",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                if (name.isBlank()) email else "$name ($email)",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = if (name.isBlank()) email else "$name ($email)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 "Įveskite kvietimo kodą, kurį išdavė administratorius.",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height(24.dp))
-            PenkiTextField(code, { code = it.uppercase() }, "Kvietimo kodas")
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = { onRedeem(code) },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Aktyvuoti paskyrą") }
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onLogout, enabled = !busy) { Text("Atsijungti") }
-            Spacer(Modifier.height(12.dp))
-            Notice(notice, noticeIsError, onDismissNotice)
         }
+        Spacer(modifier = Modifier.height(18.dp))
+        PenkiTextField(code, { code = it.uppercase() }, "Kvietimo kodas")
+        Spacer(modifier = Modifier.height(18.dp))
+        ForestButton(
+            text = "Aktyvuoti paskyrą",
+            onClick = { onRedeem(code) },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        GhostButton(
+            text = "Atsijungti",
+            onClick = onLogout,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
 // ------------------------------------------------------------------ BENDRi
 
+/** Bendra autentifikacijos ekranų struktūra: prekės ženklas ir stiklo kortelė. */
+@Composable
+private fun AuthShell(
+    subtitle: String,
+    notice: String?,
+    noticeIsError: Boolean,
+    onDismissNotice: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .statusBarsPadding()
+            .padding(horizontal = 18.dp)
+    ) {
+        Spacer(modifier = Modifier.height(44.dp))
+        BrandHeader(subtitle)
+        Spacer(modifier = Modifier.height(22.dp))
+        GlassPanel(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(32.dp),
+            contentPadding = PaddingValues(20.dp)
+        ) {
+            content()
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Notice(notice, noticeIsError, onDismissNotice)
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+/** Logotipo ženklas: žalias kvadratas su serifiniu „5“. */
+@Composable
+fun BrandMark(size: Dp = 54.dp) {
+    val corner = RoundedCornerShape(size * 0.32f)
+    Box(
+        modifier = Modifier
+            .size(size)
+            .shadowSoft(corner)
+            .clip(corner)
+            .background(ForestGradient)
+            .border(1.dp, Color.White.copy(alpha = 0.35f), corner),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "5",
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Medium,
+            color = PenkiPalette.Cream,
+            fontSize = (size.value * 0.50f).sp
+        )
+    }
+}
+
 @Composable
 fun BrandHeader(subtitle: String) {
-    Column {
-        Text(
-            "penki",
-            fontSize = 44.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        BrandMark()
+        Spacer(modifier = Modifier.width(14.dp))
+        Column {
+            Text(
+                text = "penki",
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -535,6 +625,7 @@ fun Notice(text: String?, isError: Boolean, onDismiss: () -> Unit) {
     }
 }
 
+/** Stiklinis teksto laukas su švelniu rėmeliu ir permatomu fonu. */
 @Composable
 fun PenkiTextField(
     value: String,
@@ -543,15 +634,33 @@ fun PenkiTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     modifier: Modifier = Modifier,
     singleLine: Boolean = true,
-    minLines: Int = 1
+    minLines: Int = 1,
+    visualTransformation: VisualTransformation = VisualTransformation.None
 ) {
+    val scheme = MaterialTheme.colorScheme
+    val dark = scheme.background.luminanceIsDark()
+    val container = if (dark) scheme.surface.copy(alpha = 0.62f) else Color.White.copy(alpha = 0.58f)
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
         singleLine = singleLine,
         minLines = minLines,
-        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
+        visualTransformation = visualTransformation,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        shape = RoundedCornerShape(18.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = scheme.primary,
+            unfocusedBorderColor = scheme.outline.copy(alpha = 0.45f),
+            focusedContainerColor = container,
+            unfocusedContainerColor = container.copy(alpha = container.alpha * 0.75f),
+            disabledContainerColor = container,
+            cursorColor = scheme.primary,
+            focusedLabelColor = scheme.primary,
+            unfocusedLabelColor = scheme.onSurfaceVariant,
+            focusedTextColor = scheme.onSurface,
+            unfocusedTextColor = scheme.onSurface
+        ),
         modifier = modifier.fillMaxWidth()
     )
 }

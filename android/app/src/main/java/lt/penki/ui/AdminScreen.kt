@@ -2,6 +2,7 @@ package lt.penki.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,7 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -109,9 +112,23 @@ fun AdminScreen(
     )
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Admin panelė", fontWeight = FontWeight.Bold) },
+                title = {
+                    Column {
+                        Text(
+                            "Admin panelė",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            "Mokytojai, klasės ir duomenys",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Atgal")
@@ -123,10 +140,10 @@ fun AdminScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    containerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                    actionIconContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         }
@@ -140,12 +157,15 @@ fun AdminScreen(
                 NoticeBanner(notice, state.noticeIsError, onDismissNotice)
             }
 
-            ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
-                titles.forEachIndexed { index, title ->
-                    Tab(
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                itemsIndexed(titles) { index, title ->
+                    PenkiTab(
+                        text = title,
                         selected = tab == index,
-                        onClick = { tab = index },
-                        text = { Text(title) }
+                        onClick = { tab = index }
                     )
                 }
             }
@@ -248,7 +268,7 @@ private fun TeachersTab(
             val classIds = state.classIdsOf(person.id)
             val classNames = state.classes.filter { it.id in classIds }.map { it.name }
 
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -466,7 +486,7 @@ private fun InvitesTab(
 
 @Composable
 private fun InviteRow(invite: Invite, onDelete: (String) -> Unit) {
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -528,7 +548,7 @@ private fun ClassesTab(
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(state.classes) { klass ->
-                Card(
+                GlassCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -671,7 +691,7 @@ private fun LessonTimeRow(
 ) {
     var text by remember(row.lesson_no, row.hhmm) { mutableStateOf(row.hhmm) }
 
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -736,7 +756,7 @@ private fun StatsTab(ratings: List<Rating>) {
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
@@ -796,7 +816,7 @@ private fun StatsTab(ratings: List<Rating>) {
             }
         }
         items(comments) { rating ->
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -827,7 +847,7 @@ private fun StatsTab(ratings: List<Rating>) {
 
 @Composable
 private fun StatsRow(title: String, average: Double, count: Int) {
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -899,7 +919,7 @@ private fun DebugTab(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Card(
+        GlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -922,7 +942,7 @@ private fun DebugTab(
             }
         }
 
-        Card(
+        GlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -942,7 +962,7 @@ private fun DebugTab(
             }
         }
 
-        Card(
+        GlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -986,7 +1006,7 @@ private fun DebugTab(
             }
         }
 
-        Card(
+        GlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -1050,7 +1070,7 @@ private fun DebugTab(
             }
         }
 
-        Card(
+        GlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -1090,7 +1110,7 @@ private fun DebugTab(
             }
         }
 
-        Card(
+        GlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -1123,7 +1143,7 @@ private fun DebugTab(
         }
 
         if (state.debugLog.isNotEmpty()) {
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -1142,7 +1162,7 @@ private fun DebugTab(
             }
         }
 
-        Card(
+        GlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -1245,7 +1265,7 @@ private fun FeedbackTab(
             )
         }
         items(feedback) { item ->
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)

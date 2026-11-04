@@ -1,5 +1,5 @@
 {
-  "version": "1.9",
-  "apk": "artifacts/penki-1.9.apk",
-  "notes": "Naujinimų tikrinimas kas valandą atidarius programą ir priverstinė patikra admin debug skirtuke."
+  "version": "2.0",
+  "apk": "artifacts/penki-2.0.apk",
+  "notes": "Visai naujas dizainas: smėlio fonas, tamsiai žalios akcento spalvos, serifinės antraštės ir stiklo (frosted glass) kortelės su šviesos atspindžiais."
 }

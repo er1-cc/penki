@@ -99,7 +99,7 @@ internal fun TimetableTab(
 
                 val config = state.ttConfig
                 if (config?.last_synced_at != null || !config?.last_summary.isNullOrBlank()) {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp)) {
                             config?.last_synced_at?.let { synced ->
                                 Text(
@@ -156,7 +156,7 @@ internal fun TimetableTab(
                 teacher.room.takeIf { it.isNotBlank() }?.let { "kab. $it" }
             ).joinToString(" · ")
 
-            Card(
+            GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
