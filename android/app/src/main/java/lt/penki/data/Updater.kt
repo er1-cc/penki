@@ -45,27 +45,48 @@ class Updater {
         .callTimeout(120, TimeUnit.SECONDS)
         .build()
 
+    /** Paskutinės patikros klaida (null – patikra pavyko arba dar nebuvo). */
+    var lastError: String? = null
+        private set
+
+    /** Kada paskutinį kartą klausta version.json (0 – dar ne). */
+    var lastCheckedAt: Long = 0L
+        private set
+
     /** Grąžina naujesnę versiją arba null (klaidos irgi null – tai nėra kritinė funkcija). */
     suspend fun check(currentVersion: String): UpdateManifest? = withContext(Dispatchers.IO) {
+        lastCheckedAt = System.currentTimeMillis()
+        lastError = null
         val request = Request.Builder()
             .url(MANIFEST_URL)
             .header("Accept", "application/json")
             .build()
         val raw = try {
             http.newCall(request).execute().use { res ->
-                if (!res.isSuccessful) return@withContext null
+                if (!res.isSuccessful) {
+                    lastError = "serveris atsakė HTTP ${res.code}"
+                    return@withContext null
+                }
                 res.body?.string().orEmpty()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            lastError = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
             return@withContext null
         }
-        if (raw.isBlank()) return@withContext null
+        if (raw.isBlank()) {
+            lastError = "tuščias atsakymas"
+            return@withContext null
+        }
         val manifest = try {
             json.decodeFromString<UpdateManifest>(raw)
         } catch (_: Exception) {
+            lastError = "nepavyko perskaityti version.json"
             return@withContext null
         }
-        if (manifest.version.isBlank() || manifest.apk.isBlank()) return@withContext null
+        if (manifest.version.isBlank() || manifest.apk.isBlank()) {
+            lastError = "version.json be versijos arba APK nuorodos"
+            return@withContext null
+        }
         if (!isNewer(manifest.version, currentVersion)) return@withContext null
         manifest
     }

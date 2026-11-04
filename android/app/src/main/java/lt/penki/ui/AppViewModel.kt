@@ -37,6 +37,9 @@ import java.time.format.DateTimeFormatter
 
 enum class Screen { Setup, Login, Register, Activation, Home, Admin, Settings }
 
+/** Automatinė naujinimų patikra atliekama ne dažniau kaip kartą per valandą. */
+private const val UPDATE_CHECK_INTERVAL_MS = 60L * 60L * 1000L
+
 /** Naujinimo pranešimas viršuje – dingsta pats po 10 sekundžių, jei nieko nedaroma. */
 data class UpdateInfo(
     val version: String,
@@ -83,6 +86,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Versijos aprašas, kurį aptikome; saugomas tol, kol pranešimas rodomas. */
     private var updateManifest: UpdateManifest? = null
+
+    /** Apsauga, kad vienu metu nevyktų dvi patikros. */
+    private var updateCheckRunning = false
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -1001,6 +1007,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "Vertinimų" to current.allRatings.size.toString(),
             "Pranešimų leidimas" to if (Notifications.canPost(getApplication())) "taip" else "ne",
             "Programos versija" to "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            "Naujinimų patikra" to if (prefs.updateCheckedAt == 0L) "dar netikrinta" else
+                java.time.Instant.ofEpochMilli(prefs.updateCheckedAt)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ofPattern("MM-dd HH:mm")),
             "Debug kodas" to if (BuildConfig.DEBUG) "taip" else "ne"
         )
     }
@@ -1013,19 +1023,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ------------------------------------------------------------ naujinimai
 
     /**
-     * Patikrina repozitoriją dėl naujesnės versijos. Klausa tyli, niekada
-     * nerodo klaidos – jei nepavyko, tiesiog neįvyksta.
+     * Patikrina repozitoriją dėl naujesnės versijos. Automatinė patikra tyli,
+     * atliekama ne dažniau kaip kartą per valandą ir niekada nerodo klaidos.
+     * `force` apeina valandos ribą ir rezultatą parodo pranešimu (admin debug).
      */
-    private fun checkForUpdate() {
-        if (_state.value.update != null) return
+    private fun checkForUpdate(force: Boolean = false) {
+        if (updateCheckRunning) return
+        if (!force && _state.value.update != null) return
+        val now = System.currentTimeMillis()
+        if (!force && now - prefs.updateCheckedAt < UPDATE_CHECK_INTERVAL_MS) return
+        updateCheckRunning = true
         viewModelScope.launch {
-            val manifest = updater.check(BuildConfig.VERSION_NAME) ?: return@launch
-            if (_state.value.update != null) return@launch
-            updateManifest = manifest
-            _state.update {
-                it.copy(update = UpdateInfo(version = manifest.version, notes = manifest.notes))
+            try {
+                val manifest = updater.check(BuildConfig.VERSION_NAME)
+                prefs.updateCheckedAt = System.currentTimeMillis()
+                if (manifest != null) {
+                    updateManifest = manifest
+                    _state.update {
+                        it.copy(update = UpdateInfo(version = manifest.version, notes = manifest.notes))
+                    }
+                    if (force) notice("Yra naujesnė versija ${manifest.version}.", false)
+                } else if (force) {
+                    val error = updater.lastError
+                    if (error == null) {
+                        notice(
+                            "Naujinimų nėra – naudojate naujausią versiją (${BuildConfig.VERSION_NAME}).",
+                            false
+                        )
+                    } else {
+                        notice("Nepavyko patikrinti naujinimų: $error", true)
+                    }
+                }
+                logDebug("Naujinimų patikra: " + (manifest?.version ?: updater.lastError ?: "naujinimų nėra"))
+            } finally {
+                updateCheckRunning = false
             }
         }
+    }
+
+    /** Admin debug: priverstinė naujinimų patikra, apeinanti valandos ribą. */
+    fun checkUpdateNow() {
+        _state.update { it.copy(notice = "Tikrinama naujinimų…", noticeIsError = false) }
+        checkForUpdate(force = true)
     }
 
     /** Atsisiunčia naujinį ir iš karto atidaro diegimo ekraną. */

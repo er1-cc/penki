@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import lt.penki.BuildConfig
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -97,6 +98,7 @@ fun AdminScreen(
     onDebugTestNotification: (Int) -> Unit,
     onDebugRescheduleNotifications: () -> Unit,
     onDebugCancelNotifications: () -> Unit,
+    onDebugCheckUpdate: () -> Unit,
     onMarkFeedbackRead: (String) -> Unit = {},
     onDeleteFeedback: (String) -> Unit = {}
 ) {
@@ -209,7 +211,8 @@ fun AdminScreen(
                     onDeleteInvites = onDebugDeleteInvites,
                     onTestNotification = onDebugTestNotification,
                     onReschedule = onDebugRescheduleNotifications,
-                    onCancelNotifications = onDebugCancelNotifications
+                    onCancelNotifications = onDebugCancelNotifications,
+                    onCheckUpdate = onDebugCheckUpdate
                 )
             }
         }
@@ -864,7 +867,8 @@ private fun DebugTab(
     onDeleteInvites: () -> Unit,
     onTestNotification: (Int) -> Unit,
     onReschedule: () -> Unit,
-    onCancelNotifications: () -> Unit
+    onCancelNotifications: () -> Unit,
+    onCheckUpdate: () -> Unit
 ) {
     var name by remember { mutableStateOf("Testinis Mokytojas") }
     var email by remember { mutableStateOf("") }
@@ -894,6 +898,29 @@ private fun DebugTab(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Naujinimai", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Programos versija ${BuildConfig.VERSION_NAME}. Naujinimų ieškoma automatiškai, " +
+                        "atidarius programą ir ne dažniau kaip kartą per valandą.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = onCheckUpdate,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Tikrinti naujinimų dabar") }
+            }
+        }
 
         Card(
             modifier = Modifier

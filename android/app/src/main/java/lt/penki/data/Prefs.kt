@@ -65,6 +65,11 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_SCHEDULE_TEACHER_ID, "") ?: ""
         set(value) = sp.edit().putString(KEY_SCHEDULE_TEACHER_ID, value).apply()
 
+    /** Kada paskutinį kartą tikrinta, ar yra naujesnė programos versija. */
+    var updateCheckedAt: Long
+        get() = sp.getLong(KEY_UPDATE_CHECKED_AT, 0L)
+        set(value) = sp.edit().putLong(KEY_UPDATE_CHECKED_AT, value).apply()
+
     val loggedIn: Boolean get() = accessToken.isNotBlank()
 
     fun clearSession() {
@@ -90,5 +95,6 @@ class Prefs(context: Context) {
         const val KEY_LESSON_ENDS = "lesson_ends"
         const val KEY_LESSON_ENDS_BY_TEACHER = "lesson_ends_by_teacher"
         const val KEY_SCHEDULE_TEACHER_ID = "schedule_teacher_id"
+        const val KEY_UPDATE_CHECKED_AT = "update_checked_at"
     }
 }

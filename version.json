@@ -1,5 +1,5 @@
 {
-  "version": "1.8",
-  "apk": "artifacts/penki-1.8.apk",
-  "notes": "Naujas dizainas: smėlio ir tamsiai miško spalvos, stiklo (frosted glass) paviršiai ir modernus vertinimo langas."
+  "version": "1.9",
+  "apk": "artifacts/penki-1.9.apk",
+  "notes": "Naujinimų tikrinimas kas valandą atidarius programą ir priverstinė patikra admin debug skirtuke."
 }

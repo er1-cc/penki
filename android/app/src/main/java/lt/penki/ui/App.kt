@@ -119,7 +119,9 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                     state.classes.size,
                     state.invites.size,
                     state.allRatings.size,
-                    state.lessonTimes
+                    state.lessonTimes,
+                    state.update,
+                    state.notice
                 ) { viewModel.diagnostics() },
                 onBack = viewModel::goHome,
                 onRefresh = viewModel::refreshAdmin,
@@ -150,6 +152,7 @@ fun PenkiApp(viewModel: AppViewModel, openLesson: Int?, onLessonOpened: () -> Un
                 onDebugTestNotification = viewModel::debugTestNotification,
                 onDebugRescheduleNotifications = viewModel::debugRescheduleNotifications,
                 onDebugCancelNotifications = viewModel::debugCancelNotifications,
+                onDebugCheckUpdate = viewModel::checkUpdateNow,
                 onMarkFeedbackRead = viewModel::markFeedbackRead,
                 onDeleteFeedback = viewModel::deleteFeedback
             )
