@@ -1,5 +1,10 @@
 package lt.penki.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,8 +34,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -48,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -477,6 +486,12 @@ fun RatingDialog(
     var score by remember { mutableIntStateOf(0) }
     var comment by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var notesExpanded by remember { mutableStateOf(false) }
+
+    // 5 balams pastabų laukas lieka sulenktas, 4 ir mažiau – išsiskleidžia automatiškai.
+    LaunchedEffect(score) {
+        notesExpanded = score in 1..4
+    }
 
     fun classForLesson(no: Int): String {
         val planned = plannedClasses[no]?.trim().orEmpty()
@@ -654,6 +669,7 @@ fun RatingDialog(
                     Text(
                         text = when {
                             score == 0 -> "1 – labai blogas, 5 – labai geras"
+                            score == 5 -> "5 – labai geras · pastabų neprivaloma"
                             else -> "$score – ${scoreLabel(score)}"
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -661,22 +677,13 @@ fun RatingDialog(
                         fontWeight = if (score == 0) FontWeight.Normal else FontWeight.Medium
                     )
 
-                    Spacer(modifier = Modifier.height(18.dp))
-                    OutlinedTextField(
-                        value = comment,
-                        onValueChange = { if (it.length <= 300) comment = it },
-                        label = { Text("Komentaras (neprivalomas)") },
-                        minLines = 2,
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = scheme.primary,
-                            unfocusedBorderColor = scheme.outline.copy(alpha = 0.45f),
-                            focusedContainerColor = scheme.surface.copy(alpha = 0.42f),
-                            unfocusedContainerColor = scheme.surface.copy(alpha = 0.32f),
-                            cursorColor = scheme.primary,
-                            focusedLabelColor = scheme.primary
-                        )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    NotesSection(
+                        expanded = notesExpanded,
+                        comment = comment,
+                        enabled = !busy,
+                        onToggle = { notesExpanded = !notesExpanded },
+                        onCommentChange = { if (it.length <= 300) comment = it }
                     )
 
                     if (error != null) {
@@ -713,6 +720,91 @@ fun RatingDialog(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Pastabų sekcija: 5 balams lieka sulenkta (pakanka balo), 4 ir mažiau –
+ * atsiveria automatiškai. Vartotojas bet kada gali ją atidaryti ar uždaryti
+ * rankiniu būdu, o įrašytas tekstas išsaugomas ir sulenkus.
+ */
+@Composable
+private fun NotesSection(
+    expanded: Boolean,
+    comment: String,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+    onCommentChange: (String) -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(scheme.surface.copy(alpha = 0.38f))
+            .border(1.dp, scheme.outline.copy(alpha = 0.28f), shape)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled, role = Role.Button, onClick = onToggle)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Pastabos", style = MaterialTheme.typography.titleSmall)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = when {
+                        expanded -> "Neprivaloma – papasakok, kas nutiko."
+                        comment.isNotBlank() -> comment
+                        else -> "Neprivaloma – palik tuščias, jei viskas gerai."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = if (expanded) "Sutraukti pastabas" else "Išplėsti pastabas",
+                tint = scheme.onSurfaceVariant
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(
+                modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
+            ) {
+                OutlinedTextField(
+                    value = comment,
+                    onValueChange = onCommentChange,
+                    label = { Text("Komentaras") },
+                    minLines = 2,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = scheme.primary,
+                        unfocusedBorderColor = scheme.outline.copy(alpha = 0.45f),
+                        focusedContainerColor = scheme.surface.copy(alpha = 0.55f),
+                        unfocusedContainerColor = scheme.surface.copy(alpha = 0.40f),
+                        cursorColor = scheme.primary,
+                        focusedLabelColor = scheme.primary
+                    )
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${comment.length}/300",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant
+                )
             }
         }
     }

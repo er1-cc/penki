@@ -1,5 +1,5 @@
 {
-  "version": "2.0",
-  "apk": "artifacts/penki-2.0.apk",
-  "notes": "Visai naujas dizainas: smėlio fonas, tamsiai žalios akcento spalvos, serifinės antraštės ir stiklo (frosted glass) kortelės su šviesos atspindžiais."
+  "version": "2.1",
+  "apk": "artifacts/penki-2.1.apk",
+  "notes": "Vertinime pastabų laukas dabar 5 balams lieka sulenktas, o 4 ir mažiau – atsiveria automatiškai."
 }

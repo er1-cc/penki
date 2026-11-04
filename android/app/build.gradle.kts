@@ -14,8 +14,8 @@ android {
         applicationId = "lt.penki"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "2.0"
+        versionCode = 12
+        versionName = "2.1"
 
         buildConfigField("String", "SUPABASE_URL", "\"${prop("penki.supabaseUrl")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${prop("penki.supabaseAnonKey")}\"")

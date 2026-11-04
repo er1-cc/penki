@@ -10,7 +10,7 @@ Sąsaja – lietuvių kalba.
 
 Naujausią APK rasite puslapyje [Releases](https://github.com/er1-cc/penki/releases):
 
-- [penki-2.0.apk](https://github.com/er1-cc/penki/releases/latest) – naujausia versija (naujas smėlio–miško dizainas su stiklo kortelėmis, automatinis naujinimų tikrinimas).
+- [penki-2.1.apk](https://github.com/er1-cc/penki/releases/latest) – naujausia versija (naujas smėlio–miško dizainas su stiklo kortelėmis, automatinis naujinimų tikrinimas).
 - Senesnės versijos (`1.0`–`1.4`) taip pat paskelbtos to paties puslapio archyve.
 
 Programėlė pati pasitikrina `version.json` ir pasiūlo atsisiųsti naujinį – pranešimas viršuje
@@ -25,6 +25,7 @@ naujinimų dabar“**.
   - vertinimas 1–5 (1 – labai blogas, 5 – labai geras) + neprivalomas komentaras –
     moderniame „stiklo“ lange, kuriame klasė pasiūloma pagal tvarkaraštį,
   - dienos suvestinė su progreso žiedu ir pamokų kortelėmis,
+  - pastabos: 5 balams laukas lieka sulenktas, 4 ir mažiau – atsiveria automatiškai,
   - klasės pasirinkimas, tos pačios pamokos vertinimo keitimas,
   - savo vertinimų istorija.
 - **Administratorius**
@@ -57,7 +58,7 @@ android/                 Android programa (Kotlin + Jetpack Compose)
     notify/              pranešimai (AlarmManager, boot receiver)
     ui/                  ekranai: prisijungimas, vertinimas, admin panelė, nustatymai
 supabase/schema.sql      duomenų bazės schema, RLS taisyklės, kvietimo funkcija
-artifacts/penki-2.0.apk  naujausias APK (debug parašas), Supabase reikšmės jau įrašytos
+artifacts/penki-2.1.apk  naujausias APK (debug parašas), Supabase reikšmės jau įrašytos
 ```
 
 ## 1. Supabase paruošimas
@@ -84,7 +85,7 @@ artifacts/penki-2.0.apk  naujausias APK (debug parašas), Supabase reikšmės ja
 
 ## 2. Programos prijungimas prie Supabase
 
-**Šiame APK (`artifacts/penki-2.0.apk`) reikšmės jau įrašytos** – projektas
+**Šiame APK (`artifacts/penki-2.1.apk`) reikšmės jau įrašytos** – projektas
 `https://ypnulvhcrhxcfpfbwath.supabase.co` ir `anon` raktas. Paleidus programą iškart rodomas
 prisijungimo ekranas, nieko vesti nereikia.
 
@@ -120,7 +121,7 @@ Release versijai (reikės savo parašo):
 
 ## 4. Diegimas telefone
 
-1. Nukopijuok `artifacts/penki-2.0.apk` į telefoną (arba atsiųsk per „Drive“ / el. paštą).
+1. Nukopijuok `artifacts/penki-2.1.apk` į telefoną (arba atsiųsk per „Drive“ / el. paštą).
 2. Atidaryk failą → Android paprašys leisti diegti iš šio šaltinio → **Leisti**.
 3. Pirmą kartą paleidus: įvesk Supabase URL ir anon raktą (jei neįrašei į APK),
    tada prisijunk su administratoriaus paskyra.
